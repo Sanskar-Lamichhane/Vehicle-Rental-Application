@@ -212,6 +212,108 @@ router.post("/api/resendEmail", async (req, res, next) => {
     }
 });
 
+router.post("/api/verifyemail", async(req,res,next)=>{
+    try {
+        // Extract the verification code from the request body
+        const { verificationCode } = req.body;
+        
+        // Find the user in the database using the verification code
+        const user = await User.findOne({ verificationCode });
+        
+      
+
+        // If no user is found or the verification code doesn't match
+        if (!user) {
+            return res.status(400).send({ message: "Invalid verification code" });
+        }
+
+        // If the verification code matches, update the user's `isVerified` field
+        user.isVerified = true;
+        console.log(user)
+        console.log("mello")
+        await user.save({validateModifiedOnly: true})
+
+       
+
+        // Respond to the client that the verification was successful
+        res.send({ message: "Email verified successfully" });
+    } catch (err) {
+        next(err);  // Pass any errors to the next error handler
+    }
+    
+})
+
+
+router.post("/api/login", async (req, res,next) => {
+    // 1. take password and email
+    // 2. check if user exists
+    // 3. check password
+
+
+    try {
+        let { error } = loginSchema.validate(req.body, {
+            abortEarly: false,   // Don't stop after the first validation error; collect all errors
+            stripUnknown: false, // Don't remove unknown keys from the validated value
+            allowUnknown: true    // Allow unknown keys in the input
+        })
+
+
+
+        console.log("error:", error?.details)
+
+        if (error?.details) { 
+            res.status(400).send({
+
+                errors: error?.details
+
+            })
+            return;
+        }
+
+        let user = await User.findOne({ email: req.body.email }).select("+password")
+    
+
+        if (user) {
+
+            // Check if the user is verified
+            if (!user.isVerified) {
+                return res.status(403).send({
+                    msg: "Please verify your email before logging in."
+                });
+            }
+
+            console.log(user)
+
+            let matched = await bcrypt.compare(req.body.password, user.password);
+            if (matched) {
+
+                let userObj=user.toObject();
+                delete userObj.password
+
+                let token = jwt.sign(userObj, process.env.JWT_SECRET);
+                res.send({
+                    msg: "login successful",
+                    token
+
+                })
+                console.log(process.env.JWT_SECRET)
+                return;
+            }
+
+        }
+
+        res.status(401).send({
+            msg: "Invalid credentials"
+        })
+
+
+
+    }
+    catch (err) {
+        next(err)
+    }
+})
+
 
 
 
