@@ -33,6 +33,18 @@ const schema = Joi.object({
     );
 
 
+    // Configure the email transporter using Nodemailer
+    const transporter = nodemailer.createTransport({
+        service: 'gmail', // Use Gmail or any other email service
+        port: 465,
+        secure: true,
+        auth: {
+            user: "lamichhanepower@gmail.com",      // Your email address (store in environment variable)
+            pass: "atbo tmsq nwup qbvc",  // Your email password or app password (store in environment variable)
+        },
+    });
+
+
 
     const crypto = require('crypto');
 
@@ -416,6 +428,115 @@ router.post("/api/changeName", verifyToken, async (req, res, next) => {
         next(err);
     }
 });
+
+
+
+// Joi schema for validating forget password email
+const emailSchema = Joi.object({
+    email: Joi.string().email().required(),
+});
+
+// Joi schema for setting a new password
+const setPasswordSchema = Joi.object({
+    email: Joi.string().email().required(),
+    verificationCode: Joi.string().required(),
+    newPassword: Joi.string()
+        .required()
+        .pattern(new RegExp("^[a-zA-Z0-9]{3,30}$")),
+    confirmPassword: Joi.string()
+        .valid(Joi.ref("newPassword"))
+        .required()
+        .messages({
+            "any.only": "Confirm password does not match the new password.",
+        }),
+});
+
+// Forget Password - Send Verification Code
+router.post("/api/forgetPassword", async (req, res, next) => {
+    try {
+        const { email } = req.body;
+
+        // Validate email
+        const { error } = emailSchema.validate({ email });
+        if (error) {
+            return res.status(400).send({ message: error.details[0].message });
+        }
+
+        // Find the user by email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).send({ message: "User not found." });
+        }
+
+        // Generate a verification code
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const hashedCode = crypto.createHash("sha256").update(verificationCode).digest("hex");
+
+        // Save the hashed code
+        user.verificationCode = hashedCode;
+        await user.save({ validateModifiedOnly: true });
+
+        // Send email with verification code
+        await transporter.sendMail({
+            from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>',
+            to: email,
+            subject: "Password Reset Verification Code",
+            text: `Your verification code is: ${verificationCode}`,
+        });
+
+        res.send({ message: "Verification code sent successfully to your email." });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Verify Code and Set New Password
+router.post("/api/setNewPassword", async (req, res, next) => {
+    try {
+        const { email, verificationCode, newPassword, confirmPassword } = req.body;
+
+        // Validate request body
+        const { error } = setPasswordSchema.validate(req.body);
+        if (error) {
+            return res.status(400).send({ message: error.details[0].message });
+        }
+
+        // Find user by email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).send({ message: "User not found." });
+        }
+
+        // Check if the verification code is valid
+        const hashedCode = crypto.createHash("sha256").update(verificationCode).digest("hex");
+        if (user.verificationCode !== hashedCode) {
+            return res.status(400).send({ message: "Invalid verification code." });
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update the user's password and clear the verification code
+        user.password = hashedPassword;
+        user.verificationCode = undefined; // Clear the code after verification
+        await user.save({ validateModifiedOnly: true });
+
+        // Generate JWT token for immediate authentication
+        const userObj = user.toObject();
+        delete userObj.password; // Exclude password from token payload
+        const token = jwt.sign(userObj, process.env.JWT_SECRET, { expiresIn: "1h" });
+
+        res.send({
+            message: "Password updated successfully. You are now authenticated.",
+            token,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+
+
 
 
 
