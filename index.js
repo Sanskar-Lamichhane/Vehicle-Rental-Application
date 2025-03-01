@@ -1,16 +1,55 @@
 const express = require("express")
 const app = express();
+const fileUpload=require("express-fileupload")
 const cron = require('node-cron');
 require('dotenv').config()
 require("./config/database")
 const User=require("./model/User")
 
 const auth_routes=require("./routes/auth");
+const vehicle_routes=require("./routes/vehicleManagement")
 const { handleResourceNotFound, handleServerError } = require("./middleware/error");
 
 
-
+app.use(fileUpload());
 app.use(express.json()) //global middleware
+
+
+
+
+
+
+app.use((req,res,next)=>{
+    function changeRequest(field){
+        console.log(req.files)
+        console.log(req.body)
+        let temp={};
+
+        if (req[field] !== null && req[field] !== undefined){
+
+        let temp_arr=Object.entries(req[field])
+        temp_arr.forEach(el=>{
+            if(el[0].endsWith("[]")){
+                temp[el[0].slice(0,-2)]=Array.isArray(el[1]) ? el[1]:[el[1]]
+            }
+            else{
+                temp[el[0]] = el[1];
+            }
+        })
+        req[field]=temp
+    
+    }
+}
+    
+    changeRequest("body")
+    changeRequest("files")
+    console.log(req.body)
+    next()
+})
+
+
+
+app.use(express.static('uploads'))
 
 // Delete unverified accounts older than 24 hours
 cron.schedule('0 * * * *', async () => {
@@ -45,17 +84,10 @@ cron.schedule('*/5 * * * *', async () => {
     }
   });
   
-  
-
-
-
-
-
-
-
 
 
 app.use(auth_routes)
+app.use(vehicle_routes)
 
 
 

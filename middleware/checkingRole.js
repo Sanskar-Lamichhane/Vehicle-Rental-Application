@@ -1,4 +1,4 @@
-const {ADMIN, CUSTOMER} = require("../constant");
+const {ADMIN, CUSTOMER, VENDOR} = require("../constant");
 
 const isAdmin=(req,res,next)=>{
 
@@ -36,6 +36,20 @@ const isNotVendor=(req,res,next)=>{
     
 }
 
+const isVendor=(req,res,next)=>{
+    const role=req.user.role;
+    if (role==VENDOR){
+        next()
+    }
+    else{
+        res.status(403).send(
+            {
+                message:"Access denied! you don't have vendor previlege"
+            }
+        )
+    }
+}
 
 
-module.exports={isAdmin,isNotVendor}
+
+module.exports={isAdmin,isNotVendor,isVendor}
