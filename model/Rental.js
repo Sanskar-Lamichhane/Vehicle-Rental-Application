@@ -38,7 +38,7 @@ const rentalSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['Pending', 'Approved', 'In Trip', 'Completed', 'Cancelled'], 
+    enum: ['Pending', 'Approved', 'In Trip', 'Completed', 'Cancelled', 'Rejected'], 
     default: 'Pending' 
   }
 },

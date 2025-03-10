@@ -8,6 +8,7 @@ const User=require("./model/User")
 
 const auth_routes=require("./routes/auth");
 const vehicle_routes=require("./routes/vehicleManagement")
+const rental_routes=require("./routes/rental");
 const { handleResourceNotFound, handleServerError } = require("./middleware/error");
 
 
@@ -86,8 +87,9 @@ cron.schedule('*/5 * * * *', async () => {
   
 
 
-app.use(auth_routes)
-app.use(vehicle_routes)
+app.use(auth_routes);
+app.use(vehicle_routes);
+app.use(rental_routes);
 
 
 

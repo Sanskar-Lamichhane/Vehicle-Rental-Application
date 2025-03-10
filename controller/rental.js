@@ -12,12 +12,34 @@ const createRental = async (req, res, next) => {
       return res.status(404).json({ message: "Vehicle not found." });
     }
 
+    // Check if the customer already has a pending request for the same vehicle
+    const existingPendingRental = await Rental.findOne({
+      vehicle: vehicleDetails._id,
+      customer: customer, // Ensure the check is for the same customer
+      status: "Pending", // Only check for pending requests
+      $or: [
+        // Check if the new rental period overlaps with existing rentals
+        { 
+          pickUpDateTime: { $lt: new Date(dropOffDateTime) },
+          dropOffDateTime: { $gt: new Date(pickUpDateTime) }
+        },
+        { 
+          pickUpDateTime: { $lt: new Date(dropOffDateTime) },
+          dropOffDateTime: { $gt: new Date(pickUpDateTime) }
+        }
+      ]
+    });
+
+    if (existingPendingRental) {
+      return res.status(400).json({ message: "You already have a pending request for this vehicle." });
+    }
+
     // Check if the vehicle is already rented in the selected time range
     const overlappingRental = await Rental.findOne({
       vehicle: vehicleDetails._id,
-      status: { $ne: "Completed" },
+      status: { $nin: ["Completed", "Rejected"] }, // Check only if the rental is active or pending
       $and: [
-        { pickupDateTime: { $lt: new Date(dropOffDateTime) } },
+        { pickUpDateTime: { $lt: new Date(dropOffDateTime) } },
         { dropOffDateTime: { $gt: new Date(pickUpDateTime) } }
       ]
     });
@@ -26,14 +48,14 @@ const createRental = async (req, res, next) => {
       return res.status(400).json({ message: "Vehicle is not available during the selected time frame." });
     }
 
-    // Create new rental
+    // Create new rental request
     const newRental = new Rental({
       vehicle: vehicleDetails._id,
-      user: customer,
+      customer: customer,
       price,
       per_day,
       vendor: vehicleDetails.created_by,
-      pickupDateTime: new Date(pickUpDateTime),
+      pickUpDateTime: new Date(pickUpDateTime),
       dropOffDateTime: new Date(dropOffDateTime),
       status: "Pending"
     });
