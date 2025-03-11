@@ -19,11 +19,6 @@ const rentalSchema = new mongoose.Schema({
     type:Number,
     required:true
   },
-  vendor: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
-    required: true 
-  },
   pickUpDateTime: { 
     type: Date,  // This will store both date and time
     required: true 
@@ -32,14 +27,38 @@ const rentalSchema = new mongoose.Schema({
     type: Date,  // This will store only the date, no time needed
     required: true 
   },
+  approvedAt:{
+    type:Date,
+    required:false
+  },
   actualDropOffDateTime: { 
     type: Date,  // This will store actual drop-off date and time
-    default: null 
+    required:false
   },
   status: { 
     type: String, 
     enum: ['Pending', 'Approved', 'In Trip', 'Completed', 'Cancelled', 'Rejected'], 
     default: 'Pending' 
+  },
+  rejection_message:{
+    type:String,
+    required:false
+  },
+  cancelled_at:{
+    type:Date,
+    required:false
+  },
+  approved_at:{
+    type:Date,
+    required:false
+  },
+  cancellation_message:{
+    type:String,
+    required:false
+  },
+  journey_details:{
+    type:String,
+    required:true
   }
 },
 {

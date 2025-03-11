@@ -5,10 +5,13 @@ const cron = require('node-cron');
 require('dotenv').config()
 require("./config/database")
 const User=require("./model/User")
+const Rental=require("./model/Rental")
 
 const auth_routes=require("./routes/auth");
 const vehicle_routes=require("./routes/vehicleManagement")
 const rental_routes=require("./routes/rental");
+const customer_routes=require("./routes/customer")
+const vendor_routes=require("./routes/vendor")
 const { handleResourceNotFound, handleServerError } = require("./middleware/error");
 
 
@@ -87,9 +90,37 @@ cron.schedule('*/5 * * * *', async () => {
   
 
 
+  // Define the cron job to run every 2 minutes
+cron.schedule('*/2 * * * *', () => {
+  console.log('Running task every 2 minutes');
+  
+  // Your task code here (for example, deleting expired rental requests)
+  // Call the function to delete expired rental requests, like below:
+  deleteExpiredRentals();
+});
+
+
+// Example function for deleting expired rentals
+const deleteExpiredRentals = async () => {
+  try {
+    // Logic to delete rental requests where the pickup time has passed and status is still "Pending"
+    // Replace this with your actual deletion logic
+    await Rental.deleteMany({
+      pickUpDateTime: { $lt: new Date() },
+      status: 'Pending'
+    });
+    console.log('Expired rental requests deleted.');
+  } catch (err) {
+    console.error('Error deleting expired rentals:', err);
+  }
+};
+
+
 app.use(auth_routes);
 app.use(vehicle_routes);
 app.use(rental_routes);
+app.use(customer_routes);
+app.use(vendor_routes);
 
 
 

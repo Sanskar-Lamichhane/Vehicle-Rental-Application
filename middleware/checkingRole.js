@@ -1,6 +1,7 @@
 const {ADMIN, CUSTOMER, VENDOR} = require("../constant");
 const Vehicle = require("../model/Vehicle");
-const User =require("../model/User")
+const User =require("../model/User");
+const Rental = require("../model/Rental");
 
 const isAdmin=(req,res,next)=>{
 
@@ -68,7 +69,6 @@ const isCustomer=(req,res,next)=>{
 
 const isSpecificVendor=async(req,res,next)=>{
     try{
-
     
     const params1=req.params.id;
     const vehicle=await Vehicle.findById(req.params.id);
@@ -99,6 +99,40 @@ catch(err){
 }
 
 
+const isAuthorizeVendor=async(req,res,next)=>{
+    try{
+        const params1=req.params.id;
+        const checkRental=await Rental.findById(params1);
+
+        if (checkRental){
+            const vehicle=await Vehicle.findById(checkRental.vehicle);
+            console.log(vehicle)
+            console.log(req.user._id)
+            if (vehicle.created_by==req.user._id || checkRental.customer==req.user._id){
+                next()
+            }
+            else{
+                res.status(403).send({
+                    message:"Access denied! You are not that specific User to use this resource "
+                })
+            }
 
 
-module.exports={isAdmin,isNotVendor,isVendor, isSpecificVendor, isCustomer}
+        }
+        else{
+            res.status(404).send({
+                message:"Rental Id Not Found"
+            })
+        }
+
+    }
+    catch(err){
+        next(err)
+    }
+}
+
+
+
+
+
+module.exports={isAdmin,isNotVendor,isVendor, isSpecificVendor, isCustomer, isAuthorizeVendor}
