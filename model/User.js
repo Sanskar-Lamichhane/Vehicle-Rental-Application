@@ -51,7 +51,7 @@ const userSchema = new mongoose.Schema(
         // New fields for phone number verification
         phoneNumber: {
             type: String,
-            required: false, // Can be optional until the user decides to verify it
+            required: true, // Can be optional until the user decides to verify it
             validate:{
                 validator:async function(req_value){
                     let count=await mongoose.models.User.countDocuments({phoneNumber:req_value});
@@ -64,13 +64,10 @@ const userSchema = new mongoose.Schema(
             }
 
         },
-        phoneNumberOtp: {
-            type: String,
-            required: false, // Temporary storage for OTP
-        },
-        isPhoneNumberVerified: {
-            type: Boolean,
-            default: false
+        isActive:{
+            type : Boolean,
+            required:true,
+            default : false
         }
     },
     {

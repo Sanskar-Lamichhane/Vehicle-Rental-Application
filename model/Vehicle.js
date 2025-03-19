@@ -1,22 +1,24 @@
 const mongoose = require('mongoose');
-const User=require("./User")
+const User = require("./User")
+const Brand = require("./brand")
+const Type = require("./vehicleType");
 
 
 // Define the schema for a vehicle
 const vehicleSchema = new mongoose.Schema({
   make: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
     required: true,
-    enum:["suzuki", "byd", "honda", "ford", "hyundai", "mahindra"]
+    ref: "Brand"
   },
   model: {
     type: String,
     required: true
   },
-  location:{
-    type:String,
-    required:true,
-    enum:["chitwan", "kathmandu", "butwal", "lalitpur"]
+  city: {
+    type: String,
+    required: true,
+    enum: ["chitwan", "kathmandu", "butwal", "lalitpur", "hetauda", "bhaktapur", "birgunj", "biratnagar", "dhangadi", "surkhet"]
   },
   year: {
     type: Number,
@@ -25,15 +27,22 @@ const vehicleSchema = new mongoose.Schema({
   registration_number: {
     type: String,
     required: true,
-    unique: true
+    validate: {
+      validator: async function (req_value) {
+        let count = await mongoose.models.Vehicle.countDocuments({ registration_number: req_value });
+        if (count) {
+          return false
+        }
+        return true
+      },
+      message: "Registration Number is already in use"
+    }
+
   },
   vehicle_type: {
-    type: String,
-    enum: ["sedan", "suv", "jeep", "luxury vehicle", "vans", "hatchback", "convertible"],
-    required: true,
-    set:function(req_value){
-        return req_value.toLowerCase();
-    }
+    type: mongoose.Schema.Types.ObjectId,
+    required:true,
+    ref: "Type"
   },
   kilometers_per_day: {
     type: Number,
@@ -47,20 +56,20 @@ const vehicleSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  currency_type:{
-    type:String,
-    default:"NPR"
+  currency_type: {
+    type: String,
+    default: "NPR"
   },
   color: {
     type: String,
-    required:true,
-    enum:["Black","Red","Sky Blue","Violet", "Grey", "White", "Yellow", "Pink", "Dark Blue", "Light Blue"]
+    required: true,
+    enum: ["Black", "Red", "Sky Blue", "Violet", "Grey", "White", "Yellow", "Pink", "Dark Blue", "Light Blue"]
   },
   capacity: {
     type: Number,
     required: true,
-    min:2,
-    max:15
+    minlength: 2,
+    maxlength: 15
   },
   fuel_type: {
     type: String,
@@ -80,15 +89,66 @@ const vehicleSchema = new mongoose.Schema({
   description: {
     type: String
   },
-  created_by:{
-    required:true,
+  service: {
+    type: String,
+    enum: ["on", "off"],
+    required: true
+  },
+  reviews: [
+    {
+      rating: {
+        type: Number,
+        minlength: 1,
+        maxlength: 5,
+        required: true,
+      },
+      created_by: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+      },
+      comment: {
+        type: String
+      }
+    }
+  ],
+  driver: {
+    name: {
+      type: String,
+      min: 3,
+      max: 40
+    },
+    noOfExperience: {
+      type: Number,
+      min: 1,
+      max: 50
+    },
+    phoneNumber: {
+      type: String,
+      unique: true,
+      match: /^\+9779[0-9]{9}$/,
+      validate: {
+        validator: async function (req_value) {
+          let count = await mongoose.models.Vehicle.countDocuments({ "driver.phoneNumber": req_value });
+          if (count) {
+            return false
+          }
+          return true
+        },
+        message: "Driver phone number already in use"
+      }
+
+    }
+  },
+  created_by: {
+    required: true,
     type: mongoose.Schema.Types.ObjectId,
-    ref:"User"
+    ref: "User"
   }
 },
-{
-    timestamps:true
-});
+  {
+    timestamps: true
+  });
 
 // Create and export the Vehicle model
 const Vehicle = mongoose.model('Vehicle', vehicleSchema);

@@ -12,6 +12,9 @@ const vehicle_routes=require("./routes/vehicleManagement")
 const rental_routes=require("./routes/rental");
 const customer_routes=require("./routes/customer")
 const vendor_routes=require("./routes/vendor")
+const admin_routes=require("./routes/admin")
+const brand_routes=require("./routes/brand")
+const vehicleType_routes = require("./routes/vehicleType")
 const { handleResourceNotFound, handleServerError } = require("./middleware/error");
 
 
@@ -91,12 +94,12 @@ cron.schedule('*/5 * * * *', async () => {
 
 
   // Define the cron job to run every 2 minutes
-cron.schedule('*/2 * * * *', () => {
+cron.schedule('*/2 * * * *', async() => {
   console.log('Running task every 2 minutes');
   
   // Your task code here (for example, deleting expired rental requests)
   // Call the function to delete expired rental requests, like below:
-  deleteExpiredRentals();
+  await deleteExpiredRentals();
 });
 
 
@@ -121,6 +124,9 @@ app.use(vehicle_routes);
 app.use(rental_routes);
 app.use(customer_routes);
 app.use(vendor_routes);
+app.use(admin_routes);
+app.use(brand_routes)
+app.use(vehicleType_routes)
 
 
 

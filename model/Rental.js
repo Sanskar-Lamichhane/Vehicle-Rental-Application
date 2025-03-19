@@ -19,6 +19,16 @@ const rentalSchema = new mongoose.Schema({
     type:Number,
     required:true
   },
+  pickUpLocation: {
+    type: String,
+    minlength: 3,
+    maxlength: 90
+  },
+  dropOffLocation: {
+    type: String,
+    minlength: 3,
+    maxlength: 90
+  },
   pickUpDateTime: { 
     type: Date,  // This will store both date and time
     required: true 
@@ -52,13 +62,23 @@ const rentalSchema = new mongoose.Schema({
     type:Date,
     required:false
   },
+  rejected_at:{
+    type:Date,
+    required:false
+  },
+  InTrip_at:{
+    type:Date,
+    requried:false
+  },
   cancellation_message:{
     type:String,
     required:false
   },
   journey_details:{
     type:String,
-    required:true
+    required:true,
+    minlength: 10,
+    maxlength:300
   }
 },
 {

@@ -26,7 +26,7 @@ function handleServerError(err,req,res,next){
         errors = Object.entries(err.errors).map((error) => {
             return {
                 params: error[0],
-                msg: error[1].message,
+                message: error[1].message,
             }
         }
         )

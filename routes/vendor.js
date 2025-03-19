@@ -1,6 +1,6 @@
 
 const express = require("express")
-const { isVendor, isSpecificVendor, isCustomer, isAuthorizeVendor, isAdmin } = require("../middleware/checkingRole")
+const { isVendor, isSpecificVendor, isCustomer, isAuthorizeVendor, isAdmin, isActiveUser } = require("../middleware/checkingRole")
 const { verifyToken } = require("../controller/auth")
 const router = express.Router();
 const {
@@ -9,14 +9,19 @@ const {
     getVendorApprovedRentals,
     getVendorRejectedRentals,
     getVendorInTripRentals,
-    getVendorCompletedRentals
+    getVendorCompletedRentals,
+    getAllVendorVehicles,
+    getAllVendorRentals
 } = require("../controller/vendor")
 
-router.get("/api/vendor/rental/pending", verifyToken, isVendor, getVendorPendingRentals)
-router.get("/api/vendor/rental/approved", verifyToken, isVendor, getVendorApprovedRentals)
-router.get("/api/vendor/rental/rejected", verifyToken, isVendor, getVendorRejectedRentals)
-router.get("/api/vendor/rental/inTrip", verifyToken, isVendor, getVendorInTripRentals)
-router.get("/api/vendor/rental/completed", verifyToken, isVendor, getVendorCompletedRentals)
-router.get("/api/vendor/rental/cancelled", verifyToken, isVendor, getVendorCancelledRentals)
+// router.get("/api/vendor/rental/pending", verifyToken, isVendor, getVendorPendingRentals)
+// router.get("/api/vendor/rental/approved", verifyToken, isVendor, getVendorApprovedRentals)
+// router.get("/api/vendor/rental/rejected", verifyToken, isVendor, getVendorRejectedRentals)
+// router.get("/api/vendor/rental/inTrip", verifyToken, isVendor, getVendorInTripRentals)
+// router.get("/api/vendor/rental/completed", verifyToken, isVendor, getVendorCompletedRentals)
+// router.get("/api/vendor/rental/cancelled", verifyToken, isVendor, getVendorCancelledRentals)
+
+router.get("/api/vendor/vehicles", verifyToken,isActiveUser, isVendor, getAllVendorVehicles)
+router.get("/api/vendor/rentalList", verifyToken, isActiveUser, isVendor, getAllVendorRentals)
 
 module.exports=router;

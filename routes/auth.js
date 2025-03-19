@@ -8,7 +8,7 @@ const nodemailer = require("nodemailer")
 const { sendOtp } = require('../utils/Twilia');
 const { isAdmin, isNotVendor } = require("../middleware/checkingRole")
 const router = express.Router();
-const {verifyToken}=require("../controller/auth")
+const { verifyToken } = require("../controller/auth")
 
 
 
@@ -21,18 +21,23 @@ const schema = Joi.object({
         .max(30),
 
     password: Joi.string()
-        .pattern(new RegExp('^[a-zA-Z0-9]{3,30}$')),
+    .pattern(new RegExp('^[a-zA-Z0-9!@#$%^&*()_+\\-={}|;:,.<>?~`]+$')),
 
     password_confirmation: Joi.ref('password'),
 
+    email: Joi.string().email(),
 
-    email: Joi.string().email()
+    phoneNumber: Joi.string()
+        .pattern(new RegExp('^\\+9779[0-9]{9}$')) // Validates phone number starting with +9779 and followed by 9 digits
+        .required()
+        .messages({
+            'string.pattern.base': 'Phone number must start with +9779 and be followed by 9 digits',
+        })
+
 }).with('password', 'password_confirmation') // Ensures both fields are present
     .messages({
-
-        'any.only': 'Password confirmation does not match the password.Please, Match with typed password'
-    }
-    );
+        'any.only': 'Password confirmation does not match the password. Please, match with typed password'
+    });
 
 
 // Configure the email transporter using Nodemailer
@@ -89,6 +94,7 @@ router.post("/api/signup", async (req, res, next) => {
                 user1.verificationCode = hashedCode;
                 user1.name = req.body.name;
                 user1.password = req.body.password;
+                user1.phoneNumber = req.body.phoneNumber
 
                 await user1.save({ validateModifiedOnly: true });
 
@@ -111,6 +117,7 @@ router.post("/api/signup", async (req, res, next) => {
 
         // Hash the verification code
         const hashedCode = crypto.createHash('sha256').update(verificationCode).digest('hex');
+        req.body.role = "customer"
 
         // Create a new user instance
         let user = new User({
@@ -120,7 +127,6 @@ router.post("/api/signup", async (req, res, next) => {
             // Do not include isPhoneNumberVerified, it will use the default value
         });
 
-        user.isPhoneNumberVerified=undefined;
 
         // Save the user to the database
         await user.save();
@@ -139,7 +145,7 @@ router.post("/api/signup", async (req, res, next) => {
             text: `Your verification code is: ${verificationCode}`,
         });
 
-        res.send(user);
+        res.status(200).send(user);
 
     } catch (err) {
         next(err);
@@ -245,8 +251,9 @@ router.post("/api/verifyemail", async (req, res, next) => {
         // user.verificationCode = undefined; // Clear the code after verification
         // user.verificationCodeCreatedAt=undefined;
 
-        delete user.verificationCode;
-        delete user.verificationCodeCreatedAt;
+        user.verificationCode = undefined;
+        user.verificationCodeCreatedAt = undefined;
+        user.isPhoneNumberVerified = undefined;
 
         await user.save({ validateModifiedOnly: true });
 
@@ -397,24 +404,31 @@ router.post("/api/resetPassword", verifyToken, async (req, res, next) => {
         user.password = hashedNewPassword;
         await user.save({ validateModifiedOnly: true });
 
-        res.send({ message: "Password reset successfully." });
+        res.status(200).send({ message: "Password reset successfully." });
     } catch (err) {
         next(err);
     }
 });
 
-// Joi schema for name change
-const changeNameSchema = Joi.object({
+// Joi schema for name and phone number change
+const changeNamePhoneSchema = Joi.object({
     newName: Joi.string().alphanum().min(3).max(30).required(),
+
+    newPhoneNumber: Joi.string()
+        .pattern(new RegExp('^\\+9779[0-9]{9}$')) // Validates phone number starting with +9779 and followed by 9 digits
+        .required()
+        .messages({
+            'string.pattern.base': 'Phone number must start with +9779 and be followed by 9 digits',
+        }),
 });
 
-// Change Name API
-router.post("/api/changeName", verifyToken, async (req, res, next) => {
+// Change Name and Phone API
+router.post("/api/changeNamePhone", verifyToken, async (req, res, next) => {
     try {
-        const { newName } = req.body;
+        const { newName, newPhoneNumber } = req.body;
 
         // Validate the request body
-        const { error } = changeNameSchema.validate({ newName });
+        const { error } = changeNamePhoneSchema.validate({ newName, newPhoneNumber });
         if (error) {
             return res.status(400).send({ message: error.details[0].message });
         }
@@ -426,15 +440,22 @@ router.post("/api/changeName", verifyToken, async (req, res, next) => {
             return res.status(404).send({ message: "User not found." });
         }
 
-        // Update the user's name
+        // Update the user's name and phone number
         user.name = newName;
+        user.phoneNumber = newPhoneNumber;
         await user.save({ validateModifiedOnly: true });
 
-        res.send({ message: "Name updated successfully." });
+        res.send(
+            {
+                message: "Name and phone number updated successfully.",
+                data: user
+            });
+
     } catch (err) {
         next(err);
     }
 });
+
 
 
 
@@ -491,7 +512,7 @@ router.post("/api/forgetPassword", async (req, res, next) => {
             text: `Your verification code is: ${verificationCode}`,
         });
 
-        res.send({ message: "Verification code sent successfully to your email." });
+        res.status(200).send({ message: "Verification code sent successfully to your email." });
     } catch (err) {
         next(err);
     }
@@ -534,7 +555,7 @@ router.post("/api/setNewPassword", async (req, res, next) => {
         delete userObj.password; // Exclude password from token payload
         const token = jwt.sign(userObj, process.env.JWT_SECRET, { expiresIn: "1h" });
 
-        res.send({
+        res.status(200).writesend({
             message: "Password updated successfully. You are now authenticated.",
             token,
         });
@@ -544,88 +565,6 @@ router.post("/api/setNewPassword", async (req, res, next) => {
 });
 
 
-const phoneNumberSchema = Joi.object({
-    phoneNumber: Joi.string()
-        .pattern(new RegExp('^\\+9779[0-9]{9}$')) // Validates phone number starting with +9779 and followed by 9 digits
-        .required()
-        .messages({
-            'string.pattern.base': 'Phone number must start with 9, and followed by 9 digits',
-        }),
-});
-
-// Route to send OTP
-router.post('/api/sendOtp', verifyToken, async (req, res, next) => {
-    try {
-        const { phoneNumber } = req.body;
-
-        // Validate the phone number
-        const { error } = phoneNumberSchema.validate({ phoneNumber });
-        if (error) {
-            return res.status(400).send({ message: error.details[0].message });
-        }
-
-        const user = await User.findOne({ phoneNumber, isPhoneVerified: true });
-        if (user) {
-            return res.status(404).send({ message: 'Phone number already used' });
-        }
-
-        console.log(req.body)
-        const user1 = await User.findById(req.user._id)
-
-        // Generate OTP (6-digit number)
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-
-        // Send OTP via Twilio
-        await sendOtp(phoneNumber, otp);
-        console.log(otp)
-        // Save the phone number and OTP temporarily in the database
-        user1.phoneNumber = phoneNumber;
-        user1.phoneNumberOtp = otp;
-
-        await user1.save({ validateModifiedOnly: true });
-
-        res.send({ message: 'OTP sent successfully. Please check your phone.' });
-    } catch (err) {
-        next(err);
-    }
-});
-
-
-
-// routes/phoneNumber.js (Continued)
-router.post('/api/verifyOtp', verifyToken, async (req, res, next) => {
-    try {
-        const { otp } = req.body;
-
-        const testUser = await User.findById(req.user._id);
-        // Find the user by phone number
-        if (testUser?.phoneNumber && !testUser?.isPhoneNumberVerified) {
-
-
-
-            // Check if the OTP matches
-            if (testUser.phoneNumberOtp === otp) {
-                // OTP matched, mark the phone number as verified
-                testUser.isPhoneNumberVerified = true;
-                delete testUser.phoneNumberOtp // Clear OTP after successful verification
-                await testUser.save({ validateModifiedOnly: true });
-
-                res.status(200).send({ message: 'Phone number verified successfully!' });
-            } else {
-                res.status(400).send({ message: 'Invalid OTP. Please try again.' });
-            }
-
-        }
-
-        res.status(400).send({ message: 'This Phone Number already used' })
-
-
-
-    } catch (err) {
-        next(err);
-    }
-});
 
 // Vendor Registration Route
 router.post("/api/vendorRegistration", verifyToken, isAdmin, async (req, res, next) => {
@@ -648,8 +587,9 @@ router.post("/api/vendorRegistration", verifyToken, isAdmin, async (req, res, ne
         }
 
 
-        const { name, email, password, role } = req.body;
 
+        const { name, email, password, phoneNumber } = req.body;
+        req.body.role="vendor";
         // // Ensure the phone number is provided
         // if (!phoneNumber) {
         //     return res.status(400).json({ message: "Phone number is required" });
@@ -664,32 +604,59 @@ router.post("/api/vendorRegistration", verifyToken, isAdmin, async (req, res, ne
             name,
             email,
             password: hashedPassword,
-            role,
+            role: req.body.role,
+            phoneNumber,
             isVerified: true, // Assuming vendors are verified directly by admin
         });
 
         newVendor.verificationCodeCreatedAt = undefined;
-        newVendor.isPhoneNumberVerified = undefined;
-
-
+  
         // Save the vendor to the database
         await newVendor.save();
 
         // Respond with the created vendor (excluding the password)
-        res.status(201).json({
+        res.status(200).json({
             message: "Vendor registered successfully",
             vendor: {
                 name: newVendor.name,
                 email: newVendor.email,
-                role: newVendor.role
+                role: newVendor.role,
+                phoneNumber: newVendor.phoneNumber,
+                isVerified:newVendor.isVerified
             }
         });
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
+        next(err);
     }
 });
+
+router.get("/api/user/me", verifyToken, async(req, res, next)=>{
+    try{
+
+    
+    const userDetails = await User.findOne({_id:req.user._id});
+    
+    if(userDetails){
+        res.status(200).send({
+            _id : userDetails._id,
+            name: userDetails.name,
+            email : userDetails.email,
+            phoneNumber : userDetails.phoneNumber
+        })
+    }
+    else{
+        res.status(404).send({
+            message:"User not found"
+        })
+    }
+}
+catch(err){
+    next(err)
+}
+})
+
+
 
 
 

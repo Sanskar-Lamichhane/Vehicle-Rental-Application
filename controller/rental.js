@@ -1,10 +1,20 @@
 const Vehicle = require("../model/Vehicle");
 const Rental = require("../model/Rental");
+const mongoose = require("mongoose")
 
 const createRental = async (req, res, next) => {
   try {
-    const { price, per_day, pickUpDateTime, dropOffDateTime, journey_details } = req.body;
+
+
+    const { price, per_day, pickUpDateTime, dropOffDateTime, journey_details, pickUpLocation, dropOffLocation } = req.body;
     const customer = req.user._id; // Authenticated user's ID (customer)
+
+    // Check if params.id is a valid ObjectId (24 hexadecimal characters)
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).send({
+        message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
+      });
+    }
 
     // Convert to Date objects
     const pickUpDate = new Date(pickUpDateTime);
@@ -27,9 +37,14 @@ const createRental = async (req, res, next) => {
       return res.status(404).json({ message: "Vehicle not found." });
     }
 
+    if (vehicleDetails.service === 'off') {
+      return res.status(403).json({ message: "Vehicle not available as the service is off" })
+    }
+
     // Check if the customer already has a rental for any vehicle in the same date range
     const existingCustomerRental = await Rental.findOne({
       customer: customer, // Checking rentals for the same customer
+      vehicle: vehicleDetails._id,
       status: { $nin: ["Completed", "Rejected", "Cancelled"] }, // Ignore completed/cancelled/rejected rentals
       $and: [
         { pickUpDateTime: { $lt: dropOffDate } },
@@ -38,7 +53,7 @@ const createRental = async (req, res, next) => {
     });
 
     if (existingCustomerRental) {
-      return res.status(400).json({ message: "You already have a rental during this time frame." });
+      return res.status(400).json({ message: "You already have a rental for this vehicle during this time frame." });
     }
 
 
@@ -65,7 +80,9 @@ const createRental = async (req, res, next) => {
       pickUpDateTime: pickUpDate,
       dropOffDateTime: dropOffDate,
       status: "Pending",
-      journey_details
+      journey_details,
+      pickUpLocation,
+      dropOffLocation
     });
 
     const savedRental = await newRental.save();
@@ -87,6 +104,14 @@ const changeStatus = async (req, res, next) => {
 
     // Allowed statuses
     const validStatuses = ["Approved", "In Trip", "Completed", "Rejected"];
+
+
+    // Check if params.id is a valid ObjectId (24 hexadecimal characters)
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
+      });
+    }
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status update request." });
@@ -112,6 +137,9 @@ const changeStatus = async (req, res, next) => {
     if (status === "In Trip" && rental.status !== "Approved") {
       return res.status(400).json({ message: "Rental must be 'Approved' before moving to 'In Trip'." });
     }
+    else {
+      rental.InTrip_at = new Date()
+    }
 
     if (status === "Completed" && rental.status !== "In Trip") {
       return res.status(400).json({ message: "Rental must be 'In Trip' before marking as 'Completed'." });
@@ -125,6 +153,7 @@ const changeStatus = async (req, res, next) => {
         return res.status(400).json({ message: "Rejection message is required when rejecting a rental." });
       }
       rental.rejection_message = rejection_message; // Store rejection reason
+      rental.rejected_at = new Date();
     }
 
     // Update status
@@ -147,13 +176,22 @@ const changeStatus = async (req, res, next) => {
 const changeToCancelled = async (req, res, next) => {
   try {
     const { id } = req.params; // Rental ID from URL
+
+    // Check if params.id is a valid ObjectId (24 hexadecimal characters)
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
+      });
+    }
     const rental = await Rental.findById(id);
+    
 
     console.log(rental)
 
     const user = req.user; // Current logged-in user
     const isCustomer = user.role === 'customer'; // Check if the user is a customer
     const isVendor = user.role === 'vendor'; // Check if the user is a vendor
+    const isAdmin = user.role === 'admin'
 
     const { cancellation_message } = req.body; // Assuming cancellationMessage is passed in the request body
 
@@ -163,9 +201,9 @@ const changeToCancelled = async (req, res, next) => {
     }
 
     // Customer can cancel the rental if it's either "Pending" or "Approved"
-    if (isCustomer) {
+    if (isCustomer || isAdmin) {
       if (rental.status !== "Pending" && rental.status !== "Approved") {
-        return res.status(400).json({ message: "Customer can only cancel a 'Pending' or 'Approved' rental." });
+        return res.status(400).json({ message: "Customer or admin can only cancel a 'Pending' or 'Approved' rental." });
       }
 
       rental.status = "Cancelled"; // Change status to Cancelled
@@ -202,12 +240,39 @@ const changeToCancelled = async (req, res, next) => {
 };
 
 
-const getAllPendingRentals = async (req, res, next) => {
+const getAllRentalDetails = async (req, res, next) => {
   try {
 
-    const pendingRentalList = await Rental.aggregate([
-      { $match: { status: "Pending" } }, // Filter rentals with status "Pending"
-    
+    const { status } = req.body;
+    if (!status) {
+      res.status(400).send({
+        message: "No status is sent"
+      })
+    }
+
+    // Define the sorting condition based on the status
+    let sortCondition = {};
+
+    if (status === "Pending") {
+      sortCondition = { createdAt: -1 }; // Sort by createdAt for "Pending"
+    }
+    else if (status === "Rejected") {
+      sortCondition = { rejected_at: -1 }; // Sort by rejected_at for "Rejected"
+    }
+    else if (status === "Cancelled") {
+      sortCondition = { cancelled_at: -1 }
+    }
+    else if (status === "In Trip") {
+      sortCondition = { InTrip_at: -1 }
+    }
+    else if (status === "Completed") {
+      sortCondition = { actualCompletionDate: -1 }
+    }
+
+
+    const RentalList = await Rental.aggregate([
+      { $match: { status: status } }, // Filter rentals with status
+
       // Lookup customer details from "users" collection
       {
         $lookup: {
@@ -218,7 +283,7 @@ const getAllPendingRentals = async (req, res, next) => {
         }
       },
       { $unwind: "$customer" }, // Convert customer array to object
-    
+
       // Lookup vehicle details from "vehicles" collection
       {
         $lookup: {
@@ -229,7 +294,17 @@ const getAllPendingRentals = async (req, res, next) => {
         }
       },
       { $unwind: "$vehicle" }, // Convert vehicle array to object
-    
+
+      {
+        $lookup: {
+          from: "brands",
+          localField: "vehicle.make",
+          foreignField: "_id",
+          as: "vehicle.make"
+        }
+      },
+      { $unwind: "$vehicle.make" }, // Convert brand array to object
+
       // Lookup vendor details from "users" collection (assuming vendors are in "users")
       {
         $lookup: {
@@ -239,34 +314,78 @@ const getAllPendingRentals = async (req, res, next) => {
           as: "vendor"
         }
       },
-      { $unwind: "$vendor" } // Convert vendor array to object
+      { $unwind: "$vendor" }, // Convert vendor array to object
+
+      { $sort: sortCondition }, // Sort by created date (newer first)
+
+      // Project only necessary fields to shorten the response
+      {
+        $project: {
+          _id: 1,
+          status: 1,
+          price: 1,
+          "customer._id": 1,
+          "customer.name": 1,
+          "customer.email": 1,
+          "vehicle._id": 1,
+          "vehicle.model": 1,
+          "vehicle.registration_number": 1,
+          "vehicle.vehicle_type": 1,
+          "vehicle.price_per_day": 1,
+          "vehicle.make._id": 1,
+          "vehicle.make.brandName": 1,
+          "vehicle.color": 1,
+          "vehicle.fuel_type": 1,
+          "vendor._id": 1,
+          "vendor.name": 1,
+          "vendor.phoneNumber": 1,
+          pickUpDateTime: 1,
+          dropOffDateTime: 1,
+        },
+      },
     ]);
-    
-    res.status(200).json(pendingRentalList);
-    
+
+    res.status(200).json(RentalList);
+
+
   }
   catch (err) {
     next(err);
   }
 }
 
-const getAllApprovedRentals = async (req, res, next) => {
+
+
+
+const getIndividualRentalDetails = async (req, res, next) => {
   try {
-    const ApprovedRentalList = await Rental.aggregate([
-      { $match: { status: "Approved" } }, // Filter rentals with status "Pending"
-    
-      // Lookup customer details from "users" collection
+    params1 = req.params.id;
+
+    // Check if params.id is a valid ObjectId (24 hexadecimal characters)
+    if (!mongoose.Types.ObjectId.isValid(params1)) {
+      return res.status(400).send({
+        message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
+      });
+    }
+
+
+    const objectParams = new mongoose.Types.ObjectId(params1);
+
+    const individualRentalDetails = await Rental.aggregate([
+      {
+        $match: { _id: objectParams }
+      },
       {
         $lookup: {
-          from: "users", // Assuming "users" collection stores customer data
+          from: "users",
           localField: "customer",
           foreignField: "_id",
           as: "customer"
         }
       },
-      { $unwind: "$customer" }, // Convert customer array to object
-    
-      // Lookup vehicle details from "vehicles" collection
+      {
+        $unwind: "$customer"
+      },
       {
         $lookup: {
           from: "vehicles", // Assuming "vehicles" collection stores vehicle data
@@ -276,7 +395,26 @@ const getAllApprovedRentals = async (req, res, next) => {
         }
       },
       { $unwind: "$vehicle" }, // Convert vehicle array to object
-    
+      {
+        $lookup:{
+            from : "types",
+            localField : "vehicle.vehicle_type",
+            foreignField : "_id",
+            as : "vehicle.vehicle_type"
+        }
+    },
+    {
+        $unwind : "$vehicle.vehicle_type"
+    },
+      {
+        $lookup: {
+          from: "brands",
+          localField: "vehicle.make",
+          foreignField: "_id",
+          as: "vehicle.make"
+        }
+      },
+      { $unwind: "$vehicle.make" }, // Convert brand array to object  
       // Lookup vendor details from "users" collection (assuming vendors are in "users")
       {
         $lookup: {
@@ -286,210 +424,44 @@ const getAllApprovedRentals = async (req, res, next) => {
           as: "vendor"
         }
       },
-      { $unwind: "$vendor" } // Convert vendor array to object
-    ]);
-    
-    res.status(200).json(ApprovedRentalList);
+      { $unwind: "$vendor" }, // Convert vendor array to object
+      // Exclude sensitive fields
+      {
+        $project: {
+          "vendor.password": 0,
+          "customer.password": 0,
+          "customer.createdAt": 0,
+          "customer.updatedAt": 0,
+          "customer.__v": 0,
+          "vendor.__v": 0,
+          "vendor.created_by": 0,
+          "vehicle.make.created_by": 0,
+          "vehicle.make.createdAt": 0,
+          "vehicle.make.updatedAt": 0,
+          "vehicle.make.__v": 0,
+          "vehicle.vehicle_type.created_by":0,
+          "vehicle.vehicle_type.createdAt":0,
+          "vehicle.vehicle_type.updatedAt":0,
+          "vehicle.vehicle_type.__v":0
+
+        }
+      }
+    ])
+
+    res.status(200).send({
+      individualRentalDetails
+    })
   }
   catch (err) {
     next(err)
   }
 }
 
-const getAllCancelledRentals = async (req, res, next) => {
-  try {
-    const CancelledRentalList = await Rental.aggregate([
-      { $match: { status: "Cancelled" } }, // Filter rentals with status "Pending"
-    
-      // Lookup customer details from "users" collection
-      {
-        $lookup: {
-          from: "users", // Assuming "users" collection stores customer data
-          localField: "customer",
-          foreignField: "_id",
-          as: "customer"
-        }
-      },
-      { $unwind: "$customer" }, // Convert customer array to object
-    
-      // Lookup vehicle details from "vehicles" collection
-      {
-        $lookup: {
-          from: "vehicles", // Assuming "vehicles" collection stores vehicle data
-          localField: "vehicle",
-          foreignField: "_id",
-          as: "vehicle"
-        }
-      },
-      { $unwind: "$vehicle" }, // Convert vehicle array to object
-    
-      // Lookup vendor details from "users" collection (assuming vendors are in "users")
-      {
-        $lookup: {
-          from: "users", // Assuming vendors are in "users" collection
-          localField: "vehicle.created_by", // Assuming 'created_by' in vehicles refers to vendor
-          foreignField: "_id",
-          as: "vendor"
-        }
-      },
-      { $unwind: "$vendor" } // Convert vendor array to object
-    ]);
-    
-    res.status(200).json(CancelledRentalList);
-
-  }
-  catch (err) {
-    next(err)
-  }
-}
-
-const getAllRejectedRentals = async (req, res, next) => {
-  try {
-    const RejectedRentalList = await Rental.aggregate([
-      { $match: { status: "Rejected" } }, // Filter rentals with status "Pending"
-    
-      // Lookup customer details from "users" collection
-      {
-        $lookup: {
-          from: "users", // Assuming "users" collection stores customer data
-          localField: "customer",
-          foreignField: "_id",
-          as: "customer"
-        }
-      },
-      { $unwind: "$customer" }, // Convert customer array to object
-    
-      // Lookup vehicle details from "vehicles" collection
-      {
-        $lookup: {
-          from: "vehicles", // Assuming "vehicles" collection stores vehicle data
-          localField: "vehicle",
-          foreignField: "_id",
-          as: "vehicle"
-        }
-      },
-      { $unwind: "$vehicle" }, // Convert vehicle array to object
-    
-      // Lookup vendor details from "users" collection (assuming vendors are in "users")
-      {
-        $lookup: {
-          from: "users", // Assuming vendors are in "users" collection
-          localField: "vehicle.created_by", // Assuming 'created_by' in vehicles refers to vendor
-          foreignField: "_id",
-          as: "vendor"
-        }
-      },
-      { $unwind: "$vendor" } // Convert vendor array to object
-    ]);
-    
-    res.status(200).json(RejectedRentalList);
-
-  }
-  catch (err) {
-    next(err)
-  }
-}
-
-const getAllInTripRentals = async (req, res, next) => {
-  try {
-    const InTripRentalList = await Rental.aggregate([
-      { $match: { status: "In Trip" } }, // Filter rentals with status "Pending"
-    
-      // Lookup customer details from "users" collection
-      {
-        $lookup: {
-          from: "users", // Assuming "users" collection stores customer data
-          localField: "customer",
-          foreignField: "_id",
-          as: "customer"
-        }
-      },
-      { $unwind: "$customer" }, // Convert customer array to object
-    
-      // Lookup vehicle details from "vehicles" collection
-      {
-        $lookup: {
-          from: "vehicles", // Assuming "vehicles" collection stores vehicle data
-          localField: "vehicle",
-          foreignField: "_id",
-          as: "vehicle"
-        }
-      },
-      { $unwind: "$vehicle" }, // Convert vehicle array to object
-    
-      // Lookup vendor details from "users" collection (assuming vendors are in "users")
-      {
-        $lookup: {
-          from: "users", // Assuming vendors are in "users" collection
-          localField: "vehicle.created_by", // Assuming 'created_by' in vehicles refers to vendor
-          foreignField: "_id",
-          as: "vendor"
-        }
-      },
-      { $unwind: "$vendor" } // Convert vendor array to object
-    ]);
-    
-    res.status(200).json(InTripRentalList);
-  }
-  catch (err) {
-    next(err)
-  }
-}
-
-const getAllCompletedRentals = async (req, res, next) => {
-  try {
-    const CompletedRentalList = await Rental.aggregate([
-      { $match: { status: "Completed" } }, // Filter rentals with status "Pending"
-    
-      // Lookup customer details from "users" collection
-      {
-        $lookup: {
-          from: "users", // Assuming "users" collection stores customer data
-          localField: "customer",
-          foreignField: "_id",
-          as: "customer"
-        }
-      },
-      { $unwind: "$customer" }, // Convert customer array to object
-    
-      // Lookup vehicle details from "vehicles" collection
-      {
-        $lookup: {
-          from: "vehicles", // Assuming "vehicles" collection stores vehicle data
-          localField: "vehicle",
-          foreignField: "_id",
-          as: "vehicle"
-        }
-      },
-      { $unwind: "$vehicle" }, // Convert vehicle array to object
-    
-      // Lookup vendor details from "users" collection (assuming vendors are in "users")
-      {
-        $lookup: {
-          from: "users", // Assuming vendors are in "users" collection
-          localField: "vehicle.created_by", // Assuming 'created_by' in vehicles refers to vendor
-          foreignField: "_id",
-          as: "vendor"
-        }
-      },
-      { $unwind: "$vendor" } // Convert vendor array to object
-    ]);
-    
-    res.status(200).json(CompletedRentalList);
-  }
-  catch (err) {
-
-  }
-}
 
 module.exports = {
   createRental,
   changeStatus,
   changeToCancelled,
-  getAllApprovedRentals,
-  getAllCancelledRentals,
-  getAllCompletedRentals,
-  getAllInTripRentals,
-  getAllPendingRentals,
-  getAllRejectedRentals
+  getIndividualRentalDetails,
+  getAllRentalDetails
 };
