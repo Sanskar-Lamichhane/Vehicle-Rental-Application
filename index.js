@@ -15,6 +15,14 @@ const vendor_routes=require("./routes/vendor")
 const admin_routes=require("./routes/admin")
 const brand_routes=require("./routes/brand")
 const vehicleType_routes = require("./routes/vehicleType")
+const cors = require('cors');
+const path= require('path')
+
+app.use(cors({
+  origin: 'http://localhost:5173', // Change this to your frontend URL
+}));
+
+
 const { handleResourceNotFound, handleServerError } = require("./middleware/error");
 
 
@@ -56,7 +64,11 @@ app.use((req,res,next)=>{
 
 
 
-app.use(express.static('uploads'))
+// // Serve static files from the 'uploads' folder
+// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use('/uploads', express.static('uploads'));
+
 
 // Delete unverified accounts older than 24 hours
 cron.schedule('0 * * * *', async () => {
@@ -94,7 +106,7 @@ cron.schedule('*/5 * * * *', async () => {
 
 
   // Define the cron job to run every 2 minutes
-cron.schedule('*/2 * * * *', async() => {
+cron.schedule('*/4 * * * *', async() => {
   console.log('Running task every 2 minutes');
   
   // Your task code here (for example, deleting expired rental requests)

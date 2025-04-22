@@ -86,7 +86,7 @@ const isSpecificVendor=async(req,res,next)=>{
     const vehicle=await Vehicle.findById(req.params.id);
     if (vehicle)
         {
-    if (vehicle.created_by==req.user._id){
+    if (vehicle.created_by==req.user._id || req.user.role==="admin"){
         next()
     }
     else{

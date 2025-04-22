@@ -32,7 +32,9 @@ const userSchema = new mongoose.Schema(
             enum: [SELLER, BUYER, ADMIN, VENDOR, CUSTOMER],
             required: true,
             set: function (value) {
+                if(value){
                 return value.toLowerCase();
+                }
             }
         },
         verificationCode: {
@@ -67,7 +69,7 @@ const userSchema = new mongoose.Schema(
         isActive:{
             type : Boolean,
             required:true,
-            default : false
+            default : true
         }
     },
     {

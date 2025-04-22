@@ -76,9 +76,7 @@ const rentalSchema = new mongoose.Schema({
   },
   journey_details:{
     type:String,
-    required:true,
-    minlength: 10,
-    maxlength:300
+    required:true
   }
 },
 {

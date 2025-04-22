@@ -11,22 +11,23 @@ const {
     getCustomerCompletedRentals,
     getCustomerCancelledRentals,
 } = require("../controller/customer")
-const {VendorList, CustomerList, getVehiclesNotRentedYet, deleteUnrentedVehicle, toggleUserStatus}=require("../controller/admin");
+const {VendorList, CustomerList, getVehiclesNotRentedYet, deleteUnrentedVehicle, toggleUserStatus, getAdminDashboardSummary}=require("../controller/admin");
 
 const { getAllRentalDetails } = require("../controller/rental");
 
 
 
 
-router.get("/api/admin/vendorList", verifyToken, isAdmin, VendorList)
-router.get("/api/admin/customerList", verifyToken, isAdmin, CustomerList)
-router.get("/api/admin/vehiclesNotRentedYet", verifyToken, isAdmin, getVehiclesNotRentedYet )
-router.delete("/api/admin/deleteVehicle/:id", verifyToken, isAdmin, deleteUnrentedVehicle)
+router.get("/api/admin/vendorList", verifyToken, isAdmin, VendorList);
+router.get("/api/admin/customerList", verifyToken, isAdmin, CustomerList);
+router.get("/api/admin/vehiclesNotRentedYet", verifyToken, isAdmin, getVehiclesNotRentedYet );
+router.delete("/api/admin/deleteVehicle/:id", verifyToken, isAdmin, deleteUnrentedVehicle);
 
-router.put("/api/admin/user/:id/status",verifyToken, isAdmin, toggleUserStatus)
+router.put("/api/admin/user/:id/status",verifyToken, isAdmin, toggleUserStatus);
 
+router.post("/api/admin/rentalList", verifyToken, isAdmin, getAllRentalDetails);
 
-router.get("/api/admin/rentalList", verifyToken, isAdmin, getAllRentalDetails)
+router.get("/api/admin/summaryList", verifyToken, isAdmin, getAdminDashboardSummary);
 
 
 module.exports=router;

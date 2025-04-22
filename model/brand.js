@@ -8,8 +8,9 @@ const brandSchema = new mongoose.Schema({
         minlength: 2,
         maxlength: 30,
         validate: {
-            validator: async function (req_value) {
-                let count = await mongoose.models.Brand.countDocuments({ brandName : req_value });
+            validator: async function (value) {
+                console.log(this._id)
+                let count = await mongoose.models.Brand.countDocuments({ brandName : value ,_id: { $ne: this._id }});
                 if (count) {
                     return false;
                 }
@@ -23,8 +24,10 @@ const brandSchema = new mongoose.Schema({
         type: String,
         enum: ["australia", "usa", "france", "germany", "india", "china", "japan"],
         required: true,
-        set: function (req_value) {
-            return req_value.toLowerCase();
+        set: function (value) {
+            if(value){
+            return value.toLowerCase();
+            }
         }
     },
     yearOfOrigin: {

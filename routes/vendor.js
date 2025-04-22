@@ -11,7 +11,8 @@ const {
     getVendorInTripRentals,
     getVendorCompletedRentals,
     getAllVendorVehicles,
-    getAllVendorRentals
+    getAllVendorRentals,
+    getVendorDashboardSummary
 } = require("../controller/vendor")
 
 // router.get("/api/vendor/rental/pending", verifyToken, isVendor, getVendorPendingRentals)
@@ -22,6 +23,7 @@ const {
 // router.get("/api/vendor/rental/cancelled", verifyToken, isVendor, getVendorCancelledRentals)
 
 router.get("/api/vendor/vehicles", verifyToken,isActiveUser, isVendor, getAllVendorVehicles)
-router.get("/api/vendor/rentalList", verifyToken, isActiveUser, isVendor, getAllVendorRentals)
+router.post("/api/vendor/rentalList", verifyToken, isActiveUser, isVendor, getAllVendorRentals)
+router.get("/api/vendor/summaryList",verifyToken, isActiveUser, isVendor, getVendorDashboardSummary);
 
 module.exports=router;

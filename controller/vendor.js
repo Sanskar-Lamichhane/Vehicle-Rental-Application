@@ -21,6 +21,9 @@ const getAllVendorRentals = async (req, res, next) => {
         if (status === "Pending") {
             sortCondition = { createdAt: -1 }; // Sort by createdAt for "Pending"
         }
+        else if(status === "Approved"){
+            sortCondition = {approved_at: -1};
+        }
         else if (status === "Rejected") {
             sortCondition = { rejected_at: -1 }; // Sort by rejected_at for "Rejected"
         }
@@ -112,6 +115,8 @@ const getAllVendorRentals = async (req, res, next) => {
                     "vendor.phoneNumber": 1,
                     pickUpDateTime: 1,
                     dropOffDateTime: 1,
+                    pickUpLocation: 1,
+                    dropOffLocation: 1
                 }
             }
         ]);
@@ -145,10 +150,78 @@ const getAllVendorVehicles = async (req, res, next) => {
 }
 
 
+async function getVendorDashboardSummary(req, res, next) {
+    try {
+      const vendorId = req.user._id; // Assuming the vendor ID is in the request
+      
+      // Get vendor's vehicles
+      const vendorVehicles = await Vehicle.find({ created_by: vendorId });
+      const vehicleIds = vendorVehicles.map(vehicle => vehicle._id);
+      
+      // Total vehicles the vendor has listed
+      const totalVehicles = vendorVehicles.length;
+      
+      // Total rentals for vendor's vehicles
+      const totalRentals = await Rental.countDocuments({ 
+        vehicle: { $in: vehicleIds } 
+      });
+      
+      // Completed trips for vendor's vehicles
+      const completedRentals = await Rental.countDocuments({ 
+        vehicle: { $in: vehicleIds },
+        status: 'Completed'
+      });
+      
+      // Total earnings (from completed rentals)
+      const earningsResult = await Rental.aggregate([
+        { 
+          $match: { 
+            vehicle: { $in: vehicleIds },
+            status: 'Completed'
+          } 
+        },
+        {
+          $group: {
+            _id: null,
+            totalEarnings: { $sum: { $multiply: ["$price", "$per_day"] } }
+          }
+        }
+      ]);
+      
+      const totalEarnings = earningsResult.length > 0 ? earningsResult[0].totalEarnings : 0;
+      
+      // Active rentals (In Trip status)
+      const activeRentals = await Rental.countDocuments({
+        vehicle: { $in: vehicleIds },
+        status: 'In Trip'
+      });
+  
+      // Pending approval requests
+      const pendingRequests = await Rental.countDocuments({
+        vehicle: { $in: vehicleIds },
+        status: 'Pending'
+      });
+      
+      res.status(200).json({
+        totalVehicles,
+        totalRentals,
+        totalEarnings,
+        completedRentals,
+        activeRentals,
+        pendingRequests
+      });
+      
+    } catch (error) {
+        next(err);
+    }
+  }
+
+
 
 
 
 module.exports = {
     getAllVendorVehicles,
-    getAllVendorRentals
+    getAllVendorRentals,
+    getVendorDashboardSummary
 }

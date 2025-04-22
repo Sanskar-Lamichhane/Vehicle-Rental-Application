@@ -184,7 +184,7 @@ const changeToCancelled = async (req, res, next) => {
       });
     }
     const rental = await Rental.findById(id);
-    
+
 
     console.log(rental)
 
@@ -255,6 +255,9 @@ const getAllRentalDetails = async (req, res, next) => {
 
     if (status === "Pending") {
       sortCondition = { createdAt: -1 }; // Sort by createdAt for "Pending"
+    }
+    else if (status === "Approved") {
+      sortCondition = { approved_at: -1 };
     }
     else if (status === "Rejected") {
       sortCondition = { rejected_at: -1 }; // Sort by rejected_at for "Rejected"
@@ -341,6 +344,8 @@ const getAllRentalDetails = async (req, res, next) => {
           "vendor.phoneNumber": 1,
           pickUpDateTime: 1,
           dropOffDateTime: 1,
+          pickUpLocation: 1,
+          dropOffLocation: 1
         },
       },
     ]);
@@ -370,6 +375,7 @@ const getIndividualRentalDetails = async (req, res, next) => {
 
 
     const objectParams = new mongoose.Types.ObjectId(params1);
+    console.log(objectParams)
 
     const individualRentalDetails = await Rental.aggregate([
       {
@@ -396,16 +402,16 @@ const getIndividualRentalDetails = async (req, res, next) => {
       },
       { $unwind: "$vehicle" }, // Convert vehicle array to object
       {
-        $lookup:{
-            from : "types",
-            localField : "vehicle.vehicle_type",
-            foreignField : "_id",
-            as : "vehicle.vehicle_type"
+        $lookup: {
+          from: "types",
+          localField: "vehicle.vehicle_type",
+          foreignField: "_id",
+          as: "vehicle.vehicle_type"
         }
-    },
-    {
-        $unwind : "$vehicle.vehicle_type"
-    },
+      },
+      {
+        $unwind: "$vehicle.vehicle_type"
+      },
       {
         $lookup: {
           from: "brands",
@@ -439,14 +445,17 @@ const getIndividualRentalDetails = async (req, res, next) => {
           "vehicle.make.createdAt": 0,
           "vehicle.make.updatedAt": 0,
           "vehicle.make.__v": 0,
-          "vehicle.vehicle_type.created_by":0,
-          "vehicle.vehicle_type.createdAt":0,
-          "vehicle.vehicle_type.updatedAt":0,
-          "vehicle.vehicle_type.__v":0
+          "vehicle.vehicle_type.created_by": 0,
+          "vehicle.vehicle_type.createdAt": 0,
+          "vehicle.vehicle_type.updatedAt": 0,
+          "vehicle.vehicle_type.__v": 0
 
         }
       }
     ])
+
+    
+   
 
     res.status(200).send({
       individualRentalDetails

@@ -34,7 +34,11 @@ const giveReviews = async (req, res, next) => {
                     runValidators: true // Ensure validation runs
                 }
             );
-            res.status(200).json(vehicle);
+            res.status(200).json(
+                {
+                    message:"Review updated successfully",
+                vehicle
+            });
         } else {
             // If no existing review, add a new review to the product
 

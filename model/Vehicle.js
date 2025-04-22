@@ -18,25 +18,32 @@ const vehicleSchema = new mongoose.Schema({
   city: {
     type: String,
     required: true,
-    enum: ["chitwan", "kathmandu", "butwal", "lalitpur", "hetauda", "bhaktapur", "birgunj", "biratnagar", "dhangadi", "surkhet"]
+    enum: ["chitwan", "kathmandu", "butwal", "lalitpur", "hetauda", "bhaktapur", "birgunj", "biratnagar", "dhangadi", "surkhet"],
+    set: function(req_value){
+      if(req_value){
+      return req_value.toLowerCase();
+      }
+    }
   },
   year: {
     type: Number,
-    required: true
+    required: true,
+    min:1900,
+    max:2025
   },
   registration_number: {
     type: String,
     required: true,
-    validate: {
-      validator: async function (req_value) {
-        let count = await mongoose.models.Vehicle.countDocuments({ registration_number: req_value });
-        if (count) {
-          return false
-        }
-        return true
-      },
-      message: "Registration Number is already in use"
-    }
+    // validate: {
+    //   validator: async function (req_value) {
+    //     let count = await mongoose.models.Vehicle.countDocuments({ registration_number: req_value });
+    //     if (count) {
+    //       return false
+    //     }
+    //     return true
+    //   },
+    //   message: "Registration Number is already in use"
+    // }
 
   },
   vehicle_type: {
@@ -63,7 +70,7 @@ const vehicleSchema = new mongoose.Schema({
   color: {
     type: String,
     required: true,
-    enum: ["Black", "Red", "Sky Blue", "Violet", "Grey", "White", "Yellow", "Pink", "Dark Blue", "Light Blue"]
+    enum: ["Black", "Red", "Blue", "Violet", "Grey", "White", "Yellow", "Pink"]
   },
   capacity: {
     type: Number,
@@ -127,16 +134,16 @@ const vehicleSchema = new mongoose.Schema({
       type: String,
       unique: true,
       match: /^\+9779[0-9]{9}$/,
-      validate: {
-        validator: async function (req_value) {
-          let count = await mongoose.models.Vehicle.countDocuments({ "driver.phoneNumber": req_value });
-          if (count) {
-            return false
-          }
-          return true
-        },
-        message: "Driver phone number already in use"
-      }
+      // validate: {
+      //   validator: async function (req_value) {
+      //     let count = await mongoose.models.Vehicle.countDocuments({ "driver.phoneNumber": req_value });
+      //     if (count) {
+      //       return false
+      //     }
+      //     return true
+      //   },
+      //   message: "Driver phone number already in use"
+      // }
 
     }
   },

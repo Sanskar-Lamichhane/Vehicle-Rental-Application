@@ -21,7 +21,9 @@ const schema = Joi.object({
         .max(30),
 
     password: Joi.string()
-    .pattern(new RegExp('^[a-zA-Z0-9!@#$%^&*()_+\\-={}|;:,.<>?~`]+$')),
+        .pattern(new RegExp('^[a-zA-Z0-9!@#$%^&*()_+\\-={}|;:,.<>?~`]+$'))
+        .min(6)  // Ensure at least 6 characters
+        .required(),
 
     password_confirmation: Joi.ref('password'),
 
@@ -73,6 +75,8 @@ router.post("/api/signup", async (req, res, next) => {
             return;
         }
 
+
+
         // Configure the email transporter using Nodemailer
         const transporter = nodemailer.createTransport({
             service: 'gmail',
@@ -98,15 +102,25 @@ router.post("/api/signup", async (req, res, next) => {
 
                 await user1.save({ validateModifiedOnly: true });
 
-                await transporter.sendMail({
-                    from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>',
-                    to: req.body.email,
-                    subject: 'Account Verification Code',
-                    text: `Your verification code is: ${verificationCode}`,
-                });
+                try {
 
-                res.status(200).send({ message: "Verification code resent. Please check your email." });
-                return;
+
+                    await transporter.sendMail({
+                        from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>',
+                        to: req.body.email,
+                        subject: 'Account Verification Code',
+                        text: `Your verification code is: ${verificationCode}`,
+                    });
+
+
+                    res.status(200).send({ message: "Verification code resent. Please check your email." });
+                    return;
+                }
+                catch (err) {
+                    res.status(502).send({
+                        message: "Failed to send the code in email"
+                    })
+                }
             }
         }
 
@@ -137,15 +151,23 @@ router.post("/api/signup", async (req, res, next) => {
         delete user.password;
 
 
+        try {
 
-        await transporter.sendMail({
-            from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>',
-            to: req.body.email,
-            subject: 'Account Verification Code',
-            text: `Your verification code is: ${verificationCode}`,
-        });
 
-        res.status(200).send(user);
+            await transporter.sendMail({
+                from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>',
+                to: req.body.email,
+                subject: 'Account Verification Code',
+                text: `Your verification code is: ${verificationCode}`,
+            });
+
+            res.status(200).send(user);
+        }
+        catch (err) {
+            res.status(502).send({
+                message: "Failed to send code in email"
+            })
+        }
 
     } catch (err) {
         next(err);
@@ -167,10 +189,10 @@ router.post("/api/resendEmail", async (req, res, next) => {
         const { email } = req.body;
 
         // Find the user in the database
-        const user = await User.findOne({ email, isVerified: false });
+        const user = await User.findOne({ email });
 
         if (!user) {
-            return res.status(400).send({ message: "Invalid email or the user is already verified." });
+            return res.status(400).send({ message: "User with this email is not found in our system" });
         }
 
         // Check the resend attempts for the user
@@ -184,7 +206,7 @@ router.post("/api/resendEmail", async (req, res, next) => {
 
             if (timeSinceLastAttempt < cooldownTime) {
                 const remainingTime = Math.ceil((cooldownTime - timeSinceLastAttempt) / 1000 / 60); // Convert to minutes
-                return res.status(429).send({
+                return res.status(400).send({
                     message: `You have reached the resend limit. Please wait ${remainingTime} minutes before trying again.`,
                 });
             }
@@ -195,7 +217,9 @@ router.post("/api/resendEmail", async (req, res, next) => {
 
         // Generate a new verification code
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-        user.verificationCode = verificationCode;
+        // Hash the submitted verification code
+        const hashedSubmittedCode = crypto.createHash('sha256').update(verificationCode).digest('hex');
+        user.verificationCode = hashedSubmittedCode;
         await user.save({ validateModifiedOnly: true });
 
         // Configure the email transporter using Nodemailer
@@ -209,12 +233,19 @@ router.post("/api/resendEmail", async (req, res, next) => {
             },
         });
 
-        await transporter.sendMail({
-            from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>', // sender address
-            to: req.body.email, // list of receivers
-            subject: 'Account Verification Code',
-            text: `Your verification code is: ${verificationCode}`,
-        });
+        try {
+
+
+            await transporter.sendMail({
+                from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>', // sender address
+                to: req.body.email, // list of receivers
+                subject: 'Account Verification Code',
+                text: `Your verification code is: ${verificationCode}`,
+            });
+        }
+        catch (err) {
+            res.status(502).send("Email Resent is not working properly")
+        }
 
         // Update the rate limiter
         userLimit.attempts += 1;
@@ -243,7 +274,7 @@ router.post("/api/verifyemail", async (req, res, next) => {
         const user = await User.findOne({ email, verificationCode: hashedSubmittedCode });
 
         if (!user) {
-            return res.status(400).send({ message: "Invalid email or verification code." });
+            return res.status(400).send({ message: "Invalid verification code." });
         }
 
         // Update the user's `isVerified` field
@@ -269,7 +300,7 @@ router.post("/api/verifyemail", async (req, res, next) => {
         });
 
         // Send a success email to the user
-        await transporter.sendMail({
+        transporter.sendMail({
             from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>', // sender address
             to: user.email, // recipient's email
             subject: 'Account Successfully Verified',
@@ -277,7 +308,10 @@ router.post("/api/verifyemail", async (req, res, next) => {
         });
 
         // Respond to the client that the verification was successful
-        res.send({ message: "Email verified successfully. A confirmation email has been sent." });
+        res.status(200).send({
+            message: "Email verified successfully. A confirmation email has been sent.",
+            user
+        });
 
     } catch (err) {
         next(err);  // Pass any errors to the next error handler
@@ -292,24 +326,6 @@ router.post("/api/login", async (req, res, next) => {
 
 
     try {
-        let { error } = loginSchema.validate(req.body, {
-            abortEarly: false,   // Don't stop after the first validation error; collect all errors
-            stripUnknown: false, // Don't remove unknown keys from the validated value
-            allowUnknown: true    // Allow unknown keys in the input
-        })
-
-
-
-        console.log("error:", error?.details)
-
-        if (error?.details) {
-            res.status(400).send({
-
-                errors: error?.details
-
-            })
-            return;
-        }
 
         let user = await User.findOne({ email: req.body.email }).select("+password")
 
@@ -343,8 +359,8 @@ router.post("/api/login", async (req, res, next) => {
 
         }
 
-        res.status(401).send({
-            msg: "Invalid credentials"
+        res.status(400).send({
+            message: "Invalid credentials"
         })
 
 
@@ -359,11 +375,13 @@ router.post("/api/login", async (req, res, next) => {
 // Joi schema for password reset
 const resetPasswordSchema = Joi.object({
     currentPassword: Joi.string()
-        .required()
-        .pattern(new RegExp("^[a-zA-Z0-9]{3,30}$")),
+        .pattern(new RegExp('^[a-zA-Z0-9!@#$%^&*()_+\\-={}|;:,.<>?~`]+$'))
+        .min(6)  // Ensure at least 6 characters
+        .required(),
     newPassword: Joi.string()
-        .required()
-        .pattern(new RegExp("^[a-zA-Z0-9]{3,30}$")),
+        .pattern(new RegExp('^[a-zA-Z0-9!@#$%^&*()_+\\-={}|;:,.<>?~`]+$'))
+        .min(6)  // Ensure at least 6 characters
+        .required(),
     confirmPassword: Joi.string()
         .valid(Joi.ref("newPassword"))
         .required()
@@ -469,8 +487,9 @@ const setPasswordSchema = Joi.object({
     email: Joi.string().email().required(),
     verificationCode: Joi.string().required(),
     newPassword: Joi.string()
-        .required()
-        .pattern(new RegExp("^[a-zA-Z0-9]{3,30}$")),
+        .pattern(new RegExp('^[a-zA-Z0-9!@#$%^&*()_+\\-={}|;:,.<>?~`]+$'))
+        .min(6)  // Ensure at least 6 characters
+        .required(),
     confirmPassword: Joi.string()
         .valid(Joi.ref("newPassword"))
         .required()
@@ -493,7 +512,7 @@ router.post("/api/forgetPassword", async (req, res, next) => {
         // Find the user by email
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).send({ message: "User not found." });
+            return res.status(400).send({ message: "Please, check the email and try again" });
         }
 
         // Generate a verification code
@@ -504,14 +523,22 @@ router.post("/api/forgetPassword", async (req, res, next) => {
         user.verificationCode = hashedCode;
         await user.save({ validateModifiedOnly: true });
 
-        // Send email with verification code
-        await transporter.sendMail({
-            from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>',
-            to: email,
-            subject: "Password Reset Verification Code",
-            text: `Your verification code is: ${verificationCode}`,
-        });
+        try {
 
+
+            // Send email with verification code
+            await transporter.sendMail({
+                from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>',
+                to: email,
+                subject: "Password Reset Verification Code",
+                text: `Your verification code is: ${verificationCode}`,
+            });
+        }
+        catch (err) {
+            res.status(500).send({
+                message: "Failed to send code in email"
+            })
+        }
         res.status(200).send({ message: "Verification code sent successfully to your email." });
     } catch (err) {
         next(err);
@@ -532,7 +559,7 @@ router.post("/api/setNewPassword", async (req, res, next) => {
         // Find user by email
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).send({ message: "User not found." });
+            return res.status(404).send({ message: "User with the email not found" });
         }
 
         // Check if the verification code is valid
@@ -555,7 +582,7 @@ router.post("/api/setNewPassword", async (req, res, next) => {
         delete userObj.password; // Exclude password from token payload
         const token = jwt.sign(userObj, process.env.JWT_SECRET, { expiresIn: "1h" });
 
-        res.status(200).writesend({
+        res.status(200).send({
             message: "Password updated successfully. You are now authenticated.",
             token,
         });
@@ -588,8 +615,8 @@ router.post("/api/vendorRegistration", verifyToken, isAdmin, async (req, res, ne
 
 
 
-        const { name, email, password, phoneNumber } = req.body;
-        req.body.role="vendor";
+        const { name, email, password, phoneNumber, password_confirmation } = req.body;
+        req.body.role = "vendor";
         // // Ensure the phone number is provided
         // if (!phoneNumber) {
         //     return res.status(400).json({ message: "Phone number is required" });
@@ -610,7 +637,7 @@ router.post("/api/vendorRegistration", verifyToken, isAdmin, async (req, res, ne
         });
 
         newVendor.verificationCodeCreatedAt = undefined;
-  
+
         // Save the vendor to the database
         await newVendor.save();
 
@@ -622,7 +649,7 @@ router.post("/api/vendorRegistration", verifyToken, isAdmin, async (req, res, ne
                 email: newVendor.email,
                 role: newVendor.role,
                 phoneNumber: newVendor.phoneNumber,
-                isVerified:newVendor.isVerified
+                isVerified: newVendor.isVerified
             }
         });
 
@@ -631,29 +658,30 @@ router.post("/api/vendorRegistration", verifyToken, isAdmin, async (req, res, ne
     }
 });
 
-router.get("/api/user/me", verifyToken, async(req, res, next)=>{
-    try{
+router.get("/api/user/me", verifyToken, async (req, res, next) => {
+    try {
 
-    
-    const userDetails = await User.findOne({_id:req.user._id});
-    
-    if(userDetails){
-        res.status(200).send({
-            _id : userDetails._id,
-            name: userDetails.name,
-            email : userDetails.email,
-            phoneNumber : userDetails.phoneNumber
-        })
+
+        const userDetails = await User.findOne({ _id: req.user._id });
+
+        if (userDetails) {
+            res.status(200).send({
+                _id: userDetails._id,
+                name: userDetails.name,
+                email: userDetails.email,
+                phoneNumber: userDetails.phoneNumber,
+                role: userDetails.role
+            })
+        }
+        else {
+            res.status(404).send({
+                message: "User not found"
+            })
+        }
     }
-    else{
-        res.status(404).send({
-            message:"User not found"
-        })
+    catch (err) {
+        next(err)
     }
-}
-catch(err){
-    next(err)
-}
 })
 
 

@@ -2,7 +2,7 @@
 
 function handleResourceNotFound(req,res){
     res.status(404).send({
-        msg:"Resource Not Found"
+        message:"Resource Not Found"
     })}
 
 function handleServerError(err,req,res,next){
@@ -34,7 +34,7 @@ function handleServerError(err,req,res,next){
     }
     
         res.status(statuscode).send({
-            msg:err.message,
+            message:err.message,
             errors
         })
    

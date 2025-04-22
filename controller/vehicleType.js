@@ -2,23 +2,29 @@ const Type = require("../model/vehicleType")
 const mongoose = require("mongoose")
 
 const createType = async (req, res, next) => {
-
     try {
-
-
         const { categoryName } = req.body;
-        const VehicleType = await Type.create({ ...req.body, created_by: req.user._id })
-        if (VehicleType) {
-            res.status(200).send({
-                message: "Vehicle type created successfully!",
-                vehicleType: VehicleType
-            })
+
+        // Check if categoryName already exists
+        const existingType = await Type.findOne({ categoryName });
+        if (existingType) {
+            return res.status(400).send({
+                message: "Category name is already used"
+            });
         }
-    }
-    catch (err) {
+
+        const vehicleType = await Type.create({ ...req.body, created_by: req.user._id });
+
+        res.status(200).send({
+            message: "Vehicle type created successfully!",
+            vehicleType
+        });
+
+    } catch (err) {
         next(err);
     }
-}
+};
+
 
 const fetchType = async (req, res, next) => {
     try {
@@ -37,11 +43,14 @@ const fetchType = async (req, res, next) => {
             },
             {
                 $project:{
+                    _id:1,
+                    categoryName:1,
                     "created_by._id":1,
                     "created_by.name":1
                 }
             }
         ])
+        console.log(vehicleType)
         
         res.status(200).send({
             Types: vehicleType
@@ -55,37 +64,40 @@ const fetchType = async (req, res, next) => {
 
 const updateType = async (req, res, next) => {
     try {
-        // Check if params.id is a valid ObjectId (24 hexadecimal characters)
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).send({
                 message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
             });
         }
 
-        let type = await Type.findByIdAndUpdate(req.params.id,
-            {
-                categoryName:req.body.categoryName
-            },
-            {
-                new: true, runValidators: true
-            }
-        )
+        const { categoryName } = req.body;
 
-        if(!type){
-            res.status(404).send({
-                message:"Type not found"
-            })
+        // Check if another document with the same categoryName exists (excluding the current one)
+        const existingType = await Type.findOne({ categoryName, _id: { $ne: req.params.id } });
+        if (existingType) {
+            return res.status(400).send({
+                message: "Category name is already used"
+            });
         }
-        
-        res.status(200).send({
-            Types:type
-        })
 
+        const type = await Type.findByIdAndUpdate(
+            req.params.id,
+            { categoryName },
+            { new: true, runValidators: true }
+        );
+
+        if (!type) {
+            return res.status(404).send({
+                message: "Type not found"
+            });
+        }
+
+        res.status(200).send({ type });
+
+    } catch (err) {
+        next(err);
     }
-    catch (err) {
-        next(err)
-    }
-}
+};
 
 
 module.exports = { createType, fetchType, updateType }

@@ -2,34 +2,61 @@ const Vehicle = require("../model/Vehicle");
 const path = require("path")
 const fs = require('fs');
 const mongoose = require('mongoose')
+const Rental = require("../model/Rental")
 
 
 
+
+// Create a new vehicle
 const create = async (req, res, next) => {
-
-    console.log(req.files)
-    console.log(req.body)
-
-    let images = []
-
-
-    req.files?.images?.forEach(img => {
-        let img_res = Date.now() + '-' + Math.round(Math.random() * 1E9) + img.name;
-        img.mv(path.join(__dirname, '../uploads/' + img_res))
-        images.push(img_res)
-    })
-
     try {
-        // let product=await Product.create({...req.body, created_by:req.user_id});
-        console.log(req.body)
-        let vehicle = await Vehicle.create({ ...req.body, images, created_by: req.user._id })
-        console.log(vehicle)
-        res.status(200).send({ ...vehicle.toObject() })
+        console.log(req.files);
+        console.log(req.body);
+        
+        let images = [];
+        
+        // Process images if any
+        if (req.files && req.files.images) {
+            // Handle multiple images
+            if (Array.isArray(req.files.images)) {
+                req.files.images.forEach(img => {
+                    let img_res = Date.now() + '-' + Math.round(Math.random() * 1E9) + img.name;
+                    img.mv(path.join(__dirname, '../uploads/' + img_res));
+                    images.push(img_res);
+                });
+            } else {
+                // Handle single image
+                let img = req.files.images;
+                let img_res = Date.now() + '-' + Math.round(Math.random() * 1E9) + img.name;
+                img.mv(path.join(__dirname, '../uploads/' + img_res));
+                images.push(img_res);
+            }
+        }
+        
+        // Check if registration number already exists
+        const existingRegistration = await Vehicle.findOne({ registration_number: req.body.registration_number });
+        if (existingRegistration) {
+            return res.status(400).send({ message: "Registration Number is already in use" });
+        }
+        
+        // Check if driver phone number exists (if provided)
+        if (req.body.driver && req.body.driver.phoneNumber) {
+            const existingDriver = await Vehicle.findOne({ "driver.phoneNumber": req.body.driver.phoneNumber });
+            if (existingDriver) {
+                return res.status(400).send({ message: "Driver phone number already in use" });
+            }
+        }
+        
+        // Create vehicle if validation passes
+        let vehicle = await Vehicle.create({ ...req.body, images, created_by: req.user._id });
+        console.log(vehicle);
+        res.status(200).send({...vehicle.toObject() });
+    } catch (err) {
+        console.error("Create vehicle error:", err);
+        next(err);
     }
-    catch (err) {
-        next(err)
-    }
-}
+};
+
 
 const get = async (req, res, next) => {
     try {
@@ -42,12 +69,21 @@ const get = async (req, res, next) => {
         let city = req.query.city || "";
         let make = req.query.make || "";
         let page = parseInt(req.query.page) || 1;
-        let per_page = parseInt(req.query.per_page) || 2;
+        let per_page = parseInt(req.query.per_page) || 4;
+        let sortBy = req.query.sortBy || ""; // Get the sort direction
+        let sortField = req.query.sortField || "price_per_day"; // Default sort field if not provided
 
         let pickDate = req.query.pickDate ? new Date(req.query.pickDate) : null;
         let dropDate = req.query.dropDate ? new Date(req.query.dropDate) : null;
 
         let availableVehicles = [];
+
+        // Determine sort order
+        let sortOrder = sortBy === "asc" ? 1 : -1; // 1 for ascending, -1 for descending
+
+        // Create sort object for aggregation
+        let sortObject = {};
+        sortObject[sortField] = sortOrder;
 
         // Step 1: Check if both pickDate and dropDate are provided
         if (pickDate && dropDate) {
@@ -79,26 +115,35 @@ const get = async (req, res, next) => {
             {
                 $lookup: {
                     from: "brands",
-                    localField: "make",  // Assuming 'make' field in vehicles stores the brand ID
+                    localField: "make",
                     foreignField: "_id",
                     as: "brandDetails"
                 }
             },
             { $unwind: { path: "$brandDetails", preserveNullAndEmptyArrays: true } },
+            {
+                $lookup: {
+                    from: "types",
+                    localField: "vehicle_type",
+                    foreignField: "_id",
+                    as: "vehicle_type"
+                }
+            },
+            { $unwind: { path: "$vehicle_type", preserveNullAndEmptyArrays: true } },
 
             // Dynamic filters for category, fuel_type, and transmission
             {
                 $match: {
                     $and: [
-                        cat ? { vehicle_type: RegExp(cat, "i") } : {},
+                        cat ? { "vehicle_type.categoryName": RegExp(cat, "i") } : {},
                         fuel_type ? { fuel_type: RegExp(fuel_type, "i") } : {},
                         transmission ? { transmission: RegExp(transmission, "i") } : {},
                         city ? { city: RegExp(city, "i") } : {},
                         { "brandDetails.brandName": RegExp(make, "i") },
                         search_term ? {
                             $or: [
-                                { "brandDetails.brandName": new RegExp(search_term, "i") }, // Search by brand name
-                                { model: new RegExp(search_term, "i") } // Search by model
+                                { "brandDetails.brandName": new RegExp(search_term, "i") },
+                                { model: new RegExp(search_term, "i") }
                             ]
                         } : {}
                     ]
@@ -114,6 +159,10 @@ const get = async (req, res, next) => {
             },
             {
                 $unwind: "$created_by"
+            },
+            // Add sorting before pagination
+            {
+                $sort: sortObject
             },
             {
                 $project: {
@@ -154,21 +203,54 @@ const get = async (req, res, next) => {
 };
 
 
-
+// Update an existing vehicle
 const updateVehicle = async (req, res, next) => {
     try {
-
-        // Check if params.id is a valid ObjectId (24 hexadecimal characters)
-            if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-              return res.status(400).send({
+        // Check if params.id is a valid ObjectId
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).send({
                 message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
-              });
+            });
+        }
+        
+        // Check if the vehicle exists
+        const existingVehicle = await Vehicle.findById(req.params.id);
+        if (!existingVehicle) {
+            return res.status(404).send({ message: "Vehicle not found" });
+        }
+        
+        // Check if registration number already exists (but not from this vehicle)
+        if (req.body.registration_number && req.body.registration_number !== existingVehicle.registration_number) {
+            const regNumberExists = await Vehicle.findOne({ 
+                registration_number: req.body.registration_number,
+                _id: { $ne: req.params.id }
+            });
+            
+            if (regNumberExists) {
+                return res.status(400).send({ message: "Registration Number is already in use" });
             }
-        let vehicle = await Vehicle.findByIdAndUpdate(req.params.id,
+        }
+        
+        // Check if driver phone number exists (but not from this vehicle)
+        if (req.body.driver && req.body.driver.phoneNumber && 
+            (!existingVehicle.driver || req.body.driver.phoneNumber !== existingVehicle.driver.phoneNumber)) {
+            const driverExists = await Vehicle.findOne({ 
+                "driver.phoneNumber": req.body.driver.phoneNumber,
+                _id: { $ne: req.params.id }
+            });
+            
+            if (driverExists) {
+                return res.status(400).send({ message: "Driver phone number already in use" });
+            }
+        }
+        
+        // Update vehicle if validation passes
+        let vehicle = await Vehicle.findByIdAndUpdate(
+            req.params.id,
             {
                 make: req.body.make,
                 model: req.body.model,
-                location: req.body.location,
+                city: req.body.city,
                 year: req.body.year,
                 registration_number: req.body.registration_number,
                 vehicle_type: req.body.vehicle_type,
@@ -178,27 +260,24 @@ const updateVehicle = async (req, res, next) => {
                 currency_type: req.body.currency_type,
                 color: req.body.color,
                 capacity: req.body.capacity,
-                fuel_type: req.body.petrol,
+                fuel_type: req.body.fuel_type,
                 transmission: req.body.transmission,
                 description: req.body.description,
                 service: req.body.service,
-
-
+                driver: req.body.driver
             },
             {
-                new: true, runValidators: true
+                new: true, 
+                runValidators: true
             }
-        )
-
-        res.status(200).send(vehicle)
-
+        );
+        
+        res.status(200).send(vehicle);
+    } catch (err) {
+       
+        next(err);
     }
-    catch (err) {
-
-    }
-
-}
-
+};
 const fetchingSingleVehicle = async (req, res, next) => {
     try {
         let params1 = req.params.id
@@ -303,7 +382,7 @@ const deleteImage = async (req, res, next) => {
 
         await vehicle.save({ validateModifiedOnly: true });
 
-        res.staus(200).json({
+        res.status(200).json({
             message: "Image removed successfully"
         })
     }

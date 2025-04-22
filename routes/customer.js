@@ -24,7 +24,7 @@ const {
 // router.get("/api/customer/rental/cancelled", verifyToken, isCustomer, getCustomerCancelledRentals)
 
 
-router.get("/api/customer/rental", verifyToken, isCustomer, isActiveUser, getCustomerRentalDetails)
+router.post("/api/customer/rental", verifyToken, isCustomer, isActiveUser, getCustomerRentalDetails)
 
 
 module.exports=router;

@@ -9,16 +9,16 @@ const vehicleTypeSchema = new mongoose.Schema({
         type: String,
         min: 2,
         max: 50,
-        validate: {
-            validator: async function (req_value) {
-                let count = await mongoose.models.Type.countDocuments({ categoryName: req_value });
-                if (count) {
-                    return false;
-                }
-                return true;
-            },
-            message: "Category name is already used"
-        }
+        // validate: {
+        //     validator: async function (req_value) {
+        //         let count = await mongoose.models.Type.countDocuments({ categoryName: req_value });
+        //         if (count) {
+        //             return false;
+        //         }
+        //         return true;
+        //     },
+        //     message: "Category name is already used"
+        // }
     },
     created_by: {
         type: mongoose.Schema.Types.ObjectId,
