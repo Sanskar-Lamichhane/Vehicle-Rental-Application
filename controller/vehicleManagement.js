@@ -278,6 +278,7 @@ const updateVehicle = async (req, res, next) => {
         next(err);
     }
 };
+
 const fetchingSingleVehicle = async (req, res, next) => {
     try {
         let params1 = req.params.id
@@ -311,9 +312,22 @@ const fetchingSingleVehicle = async (req, res, next) => {
                         as : "vehicle_type"
                     }
                 },
+                
                 {
                     $unwind : "$vehicle_type"
                 },
+                // Lookup for brands collection to get the brand details
+            {
+                $lookup: {
+                    from: "brands",
+                    localField: "make",
+                    foreignField: "_id",
+                    as: "brandDetails"
+                }
+            },
+            { 
+                $unwind: "$brandDetails"
+            },
                 {
                     $lookup: {
                         from: "users",
@@ -325,15 +339,15 @@ const fetchingSingleVehicle = async (req, res, next) => {
                 { $unwind: "$created_by" },
                 {
                     $project: {
-                        "created_by._id": 1,
-                        "created_by.email": 1,
-                        "created_by.phoneNumber": 1,
-                        "vehicle_type.categoryName":1,
-                        "vehicle_type._id":1
+                        "created_by.password": 0,
 
                     }
                 }
             ])
+            const singleVehicle = fetchVehicle[0];
+            res.status(200).send({
+                vehicle : singleVehicle
+            })
         }
         else {
             res.status(404).send({
@@ -341,9 +355,9 @@ const fetchingSingleVehicle = async (req, res, next) => {
             })
         }
 
-        res.status(200).send({
-            vehicle : vehicle
-        })
+        // res.status(200).send({
+        //     vehicle : vehicle
+        // })
 
     }
     catch (err) {

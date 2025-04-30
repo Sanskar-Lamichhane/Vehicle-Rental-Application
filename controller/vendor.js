@@ -1,6 +1,7 @@
 const Vehicle = require("../model/Vehicle");
 const Rental = require("../model/Rental");
 const mongoose = require("mongoose")
+const Notification =require("../model/Notification");
 
 
 const getAllVendorRentals = async (req, res, next) => {
@@ -162,28 +163,31 @@ async function getVendorDashboardSummary(req, res, next) {
       const totalVehicles = vendorVehicles.length;
       
       // Total rentals for vendor's vehicles
-      const totalRentals = await Rental.countDocuments({ 
-        vehicle: { $in: vehicleIds } 
+      const totalRentals = await Rental.countDocuments({
+        vehicle: { $in: vehicleIds }
       });
       
+      // Total trips (same as totalRentals, but keeping for clarity)
+      const totalTrips = totalRentals;
+      
       // Completed trips for vendor's vehicles
-      const completedRentals = await Rental.countDocuments({ 
+      const completedRentals = await Rental.countDocuments({
         vehicle: { $in: vehicleIds },
         status: 'Completed'
       });
       
       // Total earnings (from completed rentals)
       const earningsResult = await Rental.aggregate([
-        { 
-          $match: { 
+        {
+          $match: {
             vehicle: { $in: vehicleIds },
             status: 'Completed'
-          } 
+          }
         },
         {
           $group: {
             _id: null,
-            totalEarnings: { $sum: { $multiply: ["$price", "$per_day"] } }
+            totalEarnings: { $sum: "$price" }
           }
         }
       ]);
@@ -195,7 +199,7 @@ async function getVendorDashboardSummary(req, res, next) {
         vehicle: { $in: vehicleIds },
         status: 'In Trip'
       });
-  
+      
       // Pending approval requests
       const pendingRequests = await Rental.countDocuments({
         vehicle: { $in: vehicleIds },
@@ -205,6 +209,7 @@ async function getVendorDashboardSummary(req, res, next) {
       res.status(200).json({
         totalVehicles,
         totalRentals,
+        totalTrips,          // Added totalTrips to the response
         totalEarnings,
         completedRentals,
         activeRentals,
@@ -212,9 +217,10 @@ async function getVendorDashboardSummary(req, res, next) {
       });
       
     } catch (error) {
-        next(err);
+      next(error); // Fixed: using "error" instead of "err"
     }
   }
+
 
 
 

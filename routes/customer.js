@@ -15,16 +15,7 @@ const {
 
 
 
-
-// router.get("/api/customer/rental/pending",verifyToken,  getCustomerPendingRentals)
-// router.get("/api/customer/rental/approved", verifyToken, getCustomerApprovedRentals)
-// router.get("/api/customer/rental/rejected", verifyToken, getCustomerRejectedRentals)
-// router.get("/api/customer/rental/inTrip", verifyToken, getCustomerInTripRentals )
-// router.get("/api/customer/rental/completed", verifyToken, getCustomerCompletedRentals)
-// router.get("/api/customer/rental/cancelled", verifyToken, isCustomer, getCustomerCancelledRentals)
-
-
-router.post("/api/customer/rental", verifyToken, isCustomer, isActiveUser, getCustomerRentalDetails)
+router.post("/api/customer/rental", verifyToken, isCustomer, getCustomerRentalDetails)
 
 
 module.exports=router;

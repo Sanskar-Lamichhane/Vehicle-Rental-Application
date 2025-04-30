@@ -14,6 +14,7 @@ const {
 const {VendorList, CustomerList, getVehiclesNotRentedYet, deleteUnrentedVehicle, toggleUserStatus, getAdminDashboardSummary}=require("../controller/admin");
 
 const { getAllRentalDetails } = require("../controller/rental");
+const { getAllNotifications } = require("../controller/Notification");
 
 
 
@@ -28,6 +29,7 @@ router.put("/api/admin/user/:id/status",verifyToken, isAdmin, toggleUserStatus);
 router.post("/api/admin/rentalList", verifyToken, isAdmin, getAllRentalDetails);
 
 router.get("/api/admin/summaryList", verifyToken, isAdmin, getAdminDashboardSummary);
+router.get("/api/admin/allNotification",verifyToken,isAdmin, getAllNotifications )
 
 
 module.exports=router;

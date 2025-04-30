@@ -1,11 +1,10 @@
 const Vehicle = require("../model/Vehicle");
 const Rental = require("../model/Rental");
 const mongoose = require("mongoose")
+const Notification=require("../model/Notification")
 
 const createRental = async (req, res, next) => {
   try {
-
-
     const { price, per_day, pickUpDateTime, dropOffDateTime, journey_details, pickUpLocation, dropOffLocation } = req.body;
     const customer = req.user._id; // Authenticated user's ID (customer)
 
@@ -96,55 +95,65 @@ const createRental = async (req, res, next) => {
 };
 
 
-// ✅ Change Rental Status API
+
 const changeStatus = async (req, res, next) => {
   try {
     const { id } = req.params; // Rental ID from URL
     const { status, rejection_message } = req.body; // New status and optional rejection message
-
+    
     // Allowed statuses
     const validStatuses = ["Approved", "In Trip", "Completed", "Rejected"];
-
-
+    
     // Check if params.id is a valid ObjectId (24 hexadecimal characters)
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).send({
         message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
       });
     }
-
+    
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status update request." });
     }
-
-    // Find rental by ID
-    const rental = await Rental.findById(id);
-
+    
+    // Find rental by ID and populate customer and vehicle information
+    // Also populate the created_by field from the vehicle to get vendor information
+    const rental = await Rental.findById(id)
+      .populate('customer')
+      .populate({
+        path: 'vehicle',
+        populate: {
+          path: 'created_by',
+          model: 'User'
+        }
+      });
+    
+    if (!rental) {
+      return res.status(404).json({ message: "Rental not found." });
+    }
+    
     // Prevent changes after "Completed"
     if (rental.status === "Completed") {
       return res.status(400).json({ message: "Cannot update a completed rental." });
     }
-
+    
     // ✅ Status Transition Rules
     if (status === "Approved" && rental.status !== "Pending") {
       return res.status(400).json({ message: "Only 'Pending' rentals can be approved." });
-    }
-    else {
+    } else if (status === "Approved") {
       rental.approvedAt = new Date();
+      rental.approved_at = new Date(); // Setting both for consistency with schema
     }
-
-
+    
     if (status === "In Trip" && rental.status !== "Approved") {
       return res.status(400).json({ message: "Rental must be 'Approved' before moving to 'In Trip'." });
+    } else if (status === "In Trip") {
+      rental.InTrip_at = new Date();
     }
-    else {
-      rental.InTrip_at = new Date()
-    }
-
+    
     if (status === "Completed" && rental.status !== "In Trip") {
       return res.status(400).json({ message: "Rental must be 'In Trip' before marking as 'Completed'." });
     }
-
+    
     if (status === "Rejected") {
       if (rental.status !== "Pending") {
         return res.status(400).json({ message: "Only 'Pending' rentals can be rejected." });
@@ -155,85 +164,204 @@ const changeStatus = async (req, res, next) => {
       rental.rejection_message = rejection_message; // Store rejection reason
       rental.rejected_at = new Date();
     }
-
+    
     // Update status
     rental.status = status;
-
+    
     // If marking as "Completed", set the actual drop-off time
     if (status === "Completed") {
       rental.actualDropOffDateTime = new Date();
     }
-
+    
     await rental.save({ validateModifiedOnly: true });
-
-    return res.status(200).json({ message: `Rental status updated to ${status}.`, rental });
+    
+    // Get vehicle number and vendor information
+    const vehicleNo = rental.vehicle ? rental.vehicle.registration_number || 'Unknown' : 'Unknown';
+    const vendor = rental.vehicle && rental.vehicle.created_by ? rental.vehicle.created_by : null;
+    
+    // Create notification for the vendor with only vehicle number (no rental ID)
+    let notificationMessage = '';
+    
+    switch (status) {
+      case 'Approved':
+        notificationMessage = `Vehicle ${vehicleNo} has been approved.`;
+        break;
+      case 'In Trip':
+        notificationMessage = `Vehicle ${vehicleNo} has started the trip.`;
+        break;
+      case 'Completed':
+        notificationMessage = `Vehicle ${vehicleNo} has been completed.`;
+        break;
+      case 'Rejected':
+        notificationMessage = `Vehicle ${vehicleNo} has been rejected. Reason: ${rejection_message}`;
+        break;
+      default:
+        notificationMessage = `Vehicle ${vehicleNo} status has been updated to ${status}.`;
+    }
+    
+    // Create and save notification if vendor exists
+    let notificationId = null;
+    
+    if (vendor) {
+      const notification = new Notification({
+        description: notificationMessage,
+        type: status,
+        user: vendor._id
+      });
+      
+      const savedNotification = await notification.save();
+      notificationId = savedNotification._id;
+    }
+    
+    // Format response with vehicle number included
+    return res.status(200).json({
+      message: `Rental status updated to ${status}.`,
+      rental: {
+        ...rental.toObject(),
+        vehicleNo: vehicleNo
+      },
+      notification: {
+        id: notificationId,
+        message: notificationMessage
+      }
+    });
   } catch (err) {
     next(err);
   }
 };
 
-
 const changeToCancelled = async (req, res, next) => {
   try {
     const { id } = req.params; // Rental ID from URL
-
+    
     // Check if params.id is a valid ObjectId (24 hexadecimal characters)
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).send({
         message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
       });
     }
-    const rental = await Rental.findById(id);
-
-
-    console.log(rental)
-
+    
+    // Find rental and populate vehicle information with created_by (vendor)
+    const rental = await Rental.findById(id)
+      .populate({
+        path: 'vehicle',
+        populate: {
+          path: 'created_by',
+          model: 'User'
+        }
+      });
+    
+    if (!rental) {
+      return res.status(404).json({ message: "Rental not found." });
+    }
+    
+    console.log(rental);
+    
     const user = req.user; // Current logged-in user
     const isCustomer = user.role === 'customer'; // Check if the user is a customer
     const isVendor = user.role === 'vendor'; // Check if the user is a vendor
-    const isAdmin = user.role === 'admin'
-
+    const isAdmin = user.role === 'admin';
+    
+    // Check if the vendor is the owner of the vehicle
+    const isRentalVendor = isVendor && rental.vehicle && 
+      rental.vehicle.created_by && 
+      rental.vehicle.created_by._id.toString() === user._id.toString();
+    
     const { cancellation_message } = req.body; // Assuming cancellationMessage is passed in the request body
-
+    
     // Ensure cancellation message is provided
     if (!cancellation_message || cancellation_message.trim() === "") {
       return res.status(400).json({ message: "Cancellation message is required." });
     }
-
+    
     // Customer can cancel the rental if it's either "Pending" or "Approved"
     if (isCustomer || isAdmin) {
       if (rental.status !== "Pending" && rental.status !== "Approved") {
         return res.status(400).json({ message: "Customer or admin can only cancel a 'Pending' or 'Approved' rental." });
       }
-
+      
       rental.status = "Cancelled"; // Change status to Cancelled
+      rental.cancelled_at = new Date();
       rental.cancellation_message = cancellation_message; // Save the cancellation message
       await rental.save();
-      return res.status(200).json({ message: "Rental has been cancelled by the customer.", rental });
+      
+      // Create notification for the vendor
+      const vehicleNo = rental.vehicle ? rental.vehicle.registration_number || 'Unknown' : 'Unknown';
+      const vendor = rental.vehicle && rental.vehicle.created_by ? rental.vehicle.created_by : null;
+      let notificationId = null;
+      
+      if (vendor) {
+        const notificationMessage = `Vehicle ${vehicleNo} has been cancelled.`;
+        
+        const notification = new Notification({
+          description: notificationMessage,
+          type: 'Cancelled',
+          user: vendor._id
+        });
+        
+        const savedNotification = await notification.save();
+        notificationId = savedNotification._id;
+      }
+      
+      return res.status(200).json({ 
+        message: "Rental has been cancelled by the customer.", 
+        rental,
+        notification: {
+          id: notificationId,
+          message: `Vehicle ${vehicleNo} has been cancelled.`
+        }
+      });
     }
-
+    
     // Vendor can cancel only approved rentals, but after 2 hours of approval
     if (isVendor && isRentalVendor) {
       if (rental.status !== "Approved") {
         return res.status(400).json({ message: "Vendor can only cancel an approved rental." });
       }
-
+      
       const approvalTime = rental.approvedAt; // Assuming `approvedAt` is the time when the rental was approved
       const now = new Date();
       const twoHoursAfterApproval = new Date(approvalTime.getTime() + 2 * 60 * 60 * 1000); // Adding 2 hours to approval time
-
+      
       // Check if at least 2 hours have passed since the approval
       if (now < twoHoursAfterApproval) {
         return res.status(400).json({ message: "Vendor can only cancel rental after 2 hours of approval." });
       }
-
+      
       rental.status = "Cancelled"; // Change status to Cancelled
       rental.cancelled_at = new Date();
       rental.cancellation_message = cancellation_message; // Save the cancellation message
       await rental.save();
-      return res.status(200).json({ message: "Rental has been cancelled by the vendor.", rental });
+      
+      // Create notification for the vendor
+      const vehicleNo = rental.vehicle ? rental.vehicle.registration_number || 'Unknown' : 'Unknown';
+      const vendor = rental.vehicle && rental.vehicle.created_by ? rental.vehicle.created_by : null;
+      let notificationId = null;
+      
+      if (vendor) {
+        const notificationMessage = `Vehicle ${vehicleNo} has been cancelled.`;
+        
+        const notification = new Notification({
+          description: notificationMessage,
+          type: 'Cancelled',
+          user: vendor._id
+        });
+        
+        const savedNotification = await notification.save();
+        notificationId = savedNotification._id;
+      }
+      
+      return res.status(200).json({ 
+        message: "Rental has been cancelled by the vendor.", 
+        rental,
+        notification: {
+          id: notificationId,
+          message: `Vehicle ${vehicleNo} has been cancelled.`
+        }
+      });
     }
-
+    
+    return res.status(403).json({ message: "You do not have permission to cancel this rental." });
   } catch (err) {
     next(err);
   }

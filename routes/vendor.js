@@ -13,17 +13,13 @@ const {
     getAllVendorVehicles,
     getAllVendorRentals,
     getVendorDashboardSummary
-} = require("../controller/vendor")
+} = require("../controller/vendor");
+const { getVendorNotifications } = require("../controller/Notification");
 
-// router.get("/api/vendor/rental/pending", verifyToken, isVendor, getVendorPendingRentals)
-// router.get("/api/vendor/rental/approved", verifyToken, isVendor, getVendorApprovedRentals)
-// router.get("/api/vendor/rental/rejected", verifyToken, isVendor, getVendorRejectedRentals)
-// router.get("/api/vendor/rental/inTrip", verifyToken, isVendor, getVendorInTripRentals)
-// router.get("/api/vendor/rental/completed", verifyToken, isVendor, getVendorCompletedRentals)
-// router.get("/api/vendor/rental/cancelled", verifyToken, isVendor, getVendorCancelledRentals)
 
-router.get("/api/vendor/vehicles", verifyToken,isActiveUser, isVendor, getAllVendorVehicles)
-router.post("/api/vendor/rentalList", verifyToken, isActiveUser, isVendor, getAllVendorRentals)
-router.get("/api/vendor/summaryList",verifyToken, isActiveUser, isVendor, getVendorDashboardSummary);
+router.get("/api/vendor/vehicles", verifyToken, isVendor, getAllVendorVehicles)
+router.post("/api/vendor/rentalList", verifyToken, isVendor, getAllVendorRentals)
+router.get("/api/vendor/summaryList",verifyToken, isVendor, getVendorDashboardSummary);
+router.get("/api/vendor/getVendorNotification",verifyToken, isVendor, getVendorNotifications)
 
 module.exports=router;

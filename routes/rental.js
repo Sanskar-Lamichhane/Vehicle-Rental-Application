@@ -19,17 +19,11 @@ const {
 
 router.post("/api/rental/:id", verifyToken, isCustomer, isActiveUser, createRental)
 router.put("/api/rental/:id/status", verifyToken,  isActiveUser, isAuthorizeVendor, changeStatus)
-router.put("/api/rental/:id/cancel", verifyToken, isAuthorizeUser, changeToCancelled)
-
-// router.get("/api/rental/pending", verifyToken, isAdmin, getAllPendingRentals)
-// router.get("/api/rental/approved", verifyToken, isAdmin, getAllApprovedRentals) 
-// router.get("/api/rental/rejected", verifyToken, isAdmin, getAllRejectedRentals)
-// router.get("/api/rental/inTrip", verifyToken, isAdmin, getAllInTripRentals)
-// router.get("/api/rental/completed", verifyToken, isAdmin, getAllCompletedRentals)
-// router.get("/api/rental/cancelled", verifyToken, isAdmin, getAllCancelledRentals)
+router.put("/api/rental/:id/cancel", verifyToken, isActiveUser, isAuthorizeUser, changeToCancelled)
 
 
-router.get("/api/rental/:id", verifyToken, isActiveUser, getIndividualRentalDetails )
+
+router.get("/api/rental/:id", verifyToken, getIndividualRentalDetails )
 
 
 module.exports = router;

@@ -34,16 +34,7 @@ const vehicleSchema = new mongoose.Schema({
   registration_number: {
     type: String,
     required: true,
-    // validate: {
-    //   validator: async function (req_value) {
-    //     let count = await mongoose.models.Vehicle.countDocuments({ registration_number: req_value });
-    //     if (count) {
-    //       return false
-    //     }
-    //     return true
-    //   },
-    //   message: "Registration Number is already in use"
-    // }
+   
 
   },
   vehicle_type: {
@@ -134,17 +125,6 @@ const vehicleSchema = new mongoose.Schema({
       type: String,
       unique: true,
       match: /^\+9779[0-9]{9}$/,
-      // validate: {
-      //   validator: async function (req_value) {
-      //     let count = await mongoose.models.Vehicle.countDocuments({ "driver.phoneNumber": req_value });
-      //     if (count) {
-      //       return false
-      //     }
-      //     return true
-      //   },
-      //   message: "Driver phone number already in use"
-      // }
-
     }
   },
   created_by: {

@@ -15,6 +15,7 @@ const vendor_routes=require("./routes/vendor")
 const admin_routes=require("./routes/admin")
 const brand_routes=require("./routes/brand")
 const vehicleType_routes = require("./routes/vehicleType")
+const notification_routes= require("./routes/Notification")
 const cors = require('cors');
 const path= require('path')
 
@@ -139,6 +140,7 @@ app.use(vendor_routes);
 app.use(admin_routes);
 app.use(brand_routes)
 app.use(vehicleType_routes)
+app.use(notification_routes);
 
 
 

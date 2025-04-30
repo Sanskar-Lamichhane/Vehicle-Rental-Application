@@ -137,100 +137,75 @@ async function getAdminDashboardSummary(req, res, next) {
   try {
     // Total trips in the system
     const totalTrips = await Rental.countDocuments();
-
+    
     // Completed trips 
     const completedRentals = await Rental.countDocuments({ status: 'Completed' });
-
+    
     // Active rentals currently in progress
     const activeRentals = await Rental.countDocuments({ status: 'In Trip' });
-
+    
     // Pending approval requests
     const pendingRequests = await Rental.countDocuments({ status: 'Pending' });
-
+    
     // Total registered vehicles
     const totalVehicles = await Vehicle.countDocuments();
-
+    
     // Distinct customers who have made bookings
     const customerArray = await Rental.distinct('customer');
     const distinctCustomers = customerArray.length;
 
-    // Total registered vendors
+    // Get all vendor IDs who have created at least one vehicle
     const vendorArray = await Vehicle.distinct('created_by');
-    const totalVendors = vendorArray.length;
-
-    // System-wide revenue from completed trips
-    const revenueData = await Rental.aggregate([
-      { $match: { status: 'Completed' } },
+    
+    // Get all vendors from User collection
+    const vendors = await User.find({ role: "vendor" }, '_id');
+    
+    // Separate active and inactive vendors
+    const activeVendors = vendors.filter(v => vendorArray.includes(v._id.toString()));
+    const inactiveVendors = vendors.filter(v => !vendorArray.includes(v._id.toString()));
+    
+    // Counts
+    const totalVendors = vendors.length;
+    const activeVendorCount = activeVendors.length;
+    const inactiveVendorCount = inactiveVendors.length;
+    
+    // Define vehicleIds - get all vehicle IDs in the system
+    const vehicleIds = await Vehicle.distinct('_id');
+    
+    // Total earnings (from completed rentals)
+    const earningsResult = await Rental.aggregate([
+      {
+        $match: {
+          vehicle: { $in: vehicleIds },
+          status: 'Completed'
+        }
+      },
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: { $multiply: ["$price", "$per_day"] } }
+          totalEarnings: { $sum: "$price" }
         }
       }
     ]);
-    const totalEarnings = revenueData.length > 0 ? revenueData[0].totalRevenue : 0;
+    
+    const totalEarnings = earningsResult.length > 0 ? earningsResult[0].totalEarnings : 0;
+    
     res.status(200).json({
+      totalTrips,
       totalVehicles,
       totalVendors,
       totalEarnings,
       completedRentals,
       activeRentals,
       pendingRequests
-
-    })
-
-    // res.status(200).json({
-    //   summary: [
-    //     {
-    //       title: "Total Bookings",
-    //       value: totalTrips,
-    //       icon: "calendar"
-    //     },
-    //     {
-    //       title: "Active Rentals",
-    //       value: activeRentals,
-    //       icon: "car"
-    //     },
-    //     {
-    //       title: "Total Vehicles",
-    //       value: totalVehicles,
-    //       icon: "truck"
-    //     },
-    //     {
-    //       title: "Total Customers",
-    //       value: distinctCustomers,
-    //       icon: "users"
-    //     },
-    //     {
-    //       title: "Total Vendors",
-    //       value: totalVendors,
-    //       icon: "store"
-    //     },
-    //     {
-    //       title: "Total Revenue",
-    //       value: `NPR ${totalRevenue.toLocaleString()}`,
-    //       icon: "money"
-    //     },
-    //     {
-    //       title: "Pending Requests",
-    //       value: pendingRequests,
-    //       icon: "clock"
-    //     },
-    //     {
-    //       title: "Completed Trips",
-    //       value: completedRentals,
-    //       icon: "check"
-    //     }
-    //   ]
-    // });
-
+    });
+    
   } catch (error) {
     console.error('Error fetching admin dashboard summary:', error);
     next(error);
   }
 }
 
-module.exports = { getAdminDashboardSummary };
 
 
 module.exports = { VendorList, CustomerList, getVehiclesNotRentedYet, deleteUnrentedVehicle, toggleUserStatus, getAdminDashboardSummary };
