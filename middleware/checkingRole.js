@@ -36,7 +36,6 @@ const isNotVendor=(req,res,next)=>{
         )
     }
 
-    
 }
 
 const isVendor=(req,res,next)=>{
@@ -106,7 +105,7 @@ else{
 }
 }
 catch(err){
-    nexr(err)
+    next(err)
 }
 }
 

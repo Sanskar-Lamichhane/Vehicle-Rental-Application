@@ -69,7 +69,7 @@ const get = async (req, res, next) => {
         let city = req.query.city || "";
         let make = req.query.make || "";
         let page = parseInt(req.query.page) || 1;
-        let per_page = parseInt(req.query.per_page) || 4;
+        let per_page = parseInt(req.query.per_page) || 6;
         let sortBy = req.query.sortBy || ""; // Get the sort direction
         let sortField = req.query.sortField || "price_per_day"; // Default sort field if not provided
 

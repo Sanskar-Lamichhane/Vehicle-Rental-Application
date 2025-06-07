@@ -4,7 +4,6 @@ const jwt = require("jsonwebtoken");
 
 
 
-
 // Middleware to verify JWT token
 const verifyToken = async (req, res, next) => {
     const token = req.headers.authorization?.split(" ")[1]; // Bearer token
@@ -18,7 +17,7 @@ const verifyToken = async (req, res, next) => {
 
         next();
     } catch (err) {
-        res.status(403).send({ message: "Invalid or expired token." });
+        res.status(401).send({ message: "Invalid or expired token." });
     }
 };
 

@@ -35,33 +35,63 @@ app.use(express.json()) //global middleware
 
 
 
-app.use((req,res,next)=>{
-    function changeRequest(field){
-        console.log(req.files)
-        console.log(req.body)
-        let temp={};
+// app.use((req,res,next)=>{
+//     function changeRequest(field){
+//         console.log(req.files)
+//         console.log(req.body)
+//         let temp={};
 
-        if (req[field] !== null && req[field] !== undefined){
+//         if (req[field] !== null && req[field] !== undefined){
 
-        let temp_arr=Object.entries(req[field])
-        temp_arr.forEach(el=>{
-            if(el[0].endsWith("[]")){
-                temp[el[0].slice(0,-2)]=Array.isArray(el[1]) ? el[1]:[el[1]]
-            }
-            else{
-                temp[el[0]] = el[1];
-            }
-        })
-        req[field]=temp
+//         let temp_arr=Object.entries(req[field])
+//         temp_arr.forEach(el=>{
+//             if(el[0].endsWith("[]")){
+//                 temp[el[0].slice(0,-2)]=Array.isArray(el[1]) ? el[1]:[el[1]]
+//             }
+//             else{
+//                 temp[el[0]] = el[1];
+//             }
+//         })
+//         req[field]=temp
     
+//     }
+// }
+    
+//     changeRequest("body")
+//     changeRequest("files")
+//     next()
+// })
+
+
+app.use((req, res, next) => {
+    function changeRequest(field) {
+        let temp = {};
+
+        if (req[field] !== null && req[field] !== undefined) {
+            let temp_arr = Object.entries(req[field]);
+            temp_arr.forEach(el => {
+                if (el[0].endsWith("[]")) {
+                    temp[el[0].slice(0, -2)] = Array.isArray(el[1]) ? el[1] : [el[1]];
+                } else {
+                    temp[el[0]] = el[1];
+                }
+            });
+            req[field] = temp;
+        }
     }
-}
-    
-    changeRequest("body")
-    changeRequest("files")
-    console.log(req.body)
-    next()
-})
+
+    changeRequest("body");
+    changeRequest("files");
+
+    // Only log when there's something worth logging
+    if (Object.keys(req.body).length > 0 || req.files) {
+        console.log("Request received:");
+        if (req.files) console.log("Files:", req.files);
+        if (Object.keys(req.body).length > 0) console.log("Body:", req.body);
+    }
+
+    next();
+});
 
 
 

@@ -1,7 +1,101 @@
 const Vehicle = require("../model/Vehicle");
 const Rental = require("../model/Rental");
 const mongoose = require("mongoose")
+const User= require("../model/User");
 const Notification=require("../model/Notification")
+const nodemailer = require('nodemailer'); // Add this import at the top
+
+// const createRental = async (req, res, next) => {
+//   try {
+//     const { price, per_day, pickUpDateTime, dropOffDateTime, journey_details, pickUpLocation, dropOffLocation } = req.body;
+//     const customer = req.user._id; // Authenticated user's ID (customer)
+
+//     // Check if params.id is a valid ObjectId (24 hexadecimal characters)
+//     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+//       return res.status(400).send({
+//         message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
+//       });
+//     }
+
+//     // Convert to Date objects
+//     const pickUpDate = new Date(pickUpDateTime);
+//     const dropOffDate = new Date(dropOffDateTime);
+//     const now = new Date();
+
+//     // Validation: Pickup should be at least 2 hours ahead of now
+//     if (pickUpDate < new Date(now.getTime() + 2 * 60 * 60 * 1000)) {
+//       return res.status(400).json({ message: "Pickup time must be at least 2 hours from now." });
+//     }
+
+//     // Validation: Drop-off should be after pickup
+//     if (dropOffDate <= pickUpDate) {
+//       return res.status(400).json({ message: "Drop-off time must be after the pickup time." });
+//     }
+
+//     // Find the vehicle details
+//     const vehicleDetails = await Vehicle.findById(req.params.id);
+//     if (!vehicleDetails) {
+//       return res.status(404).json({ message: "Vehicle not found." });
+//     }
+
+//     if (vehicleDetails.service === 'off') {
+//       return res.status(403).json({ message: "Vehicle not available as the service is off" })
+//     }
+
+//     // Check if the customer already has a rental for any vehicle in the same date range
+//     const existingCustomerRental = await Rental.findOne({
+//       customer: customer, // Checking rentals for the same customer
+//       vehicle: vehicleDetails._id,
+//       status: { $nin: ["Completed", "Rejected", "Cancelled"] }, // Ignore completed/cancelled/rejected rentals
+//       $and: [
+//         { pickUpDateTime: { $lt: dropOffDate } },
+//         { dropOffDateTime: { $gt: pickUpDate } }
+//       ]
+//     });
+
+//     if (existingCustomerRental) {
+//       return res.status(400).json({ message: "You already have a rental for this vehicle during this time frame." });
+//     }
+
+
+//     // Check if the vehicle is already rented in the selected time range
+//     const overlappingRental = await Rental.findOne({
+//       vehicle: vehicleDetails._id,
+//       status: { $nin: ["Completed", "Rejected", "Cancelled"] }, // Check only if the rental is active or pending
+//       $and: [
+//         { pickUpDateTime: { $lt: dropOffDate } },
+//         { dropOffDateTime: { $gt: pickUpDate } }
+//       ]
+//     });
+
+//     if (overlappingRental) {
+//       return res.status(400).json({ message: "Vehicle is not available during the selected time frame." });
+//     }
+
+//     // Create new rental request
+//     const newRental = new Rental({
+//       vehicle: vehicleDetails._id,
+//       customer: customer,
+//       price,
+//       per_day,
+//       pickUpDateTime: pickUpDate,
+//       dropOffDateTime: dropOffDate,
+//       status: "Pending",
+//       journey_details,
+//       pickUpLocation,
+//       dropOffLocation
+//     });
+
+//     const savedRental = await newRental.save();
+//     res.status(201).json({
+//       message: "Rental created successfully.",
+//       rental: savedRental
+//     });
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+
 
 const createRental = async (req, res, next) => {
   try {
@@ -30,8 +124,8 @@ const createRental = async (req, res, next) => {
       return res.status(400).json({ message: "Drop-off time must be after the pickup time." });
     }
 
-    // Find the vehicle details
-    const vehicleDetails = await Vehicle.findById(req.params.id);
+    // Find the vehicle details and populate the vendor information
+    const vehicleDetails = await Vehicle.findById(req.params.id).populate('created_by');
     if (!vehicleDetails) {
       return res.status(404).json({ message: "Vehicle not found." });
     }
@@ -85,15 +179,172 @@ const createRental = async (req, res, next) => {
     });
 
     const savedRental = await newRental.save();
+
+    // Create notification for the vendor
+    const vehicleNo = vehicleDetails.registration_number || 'Unknown';
+    const vendor = vehicleDetails.created_by;
+    let notificationId = null;
+    
+    if (vendor) {
+      const notificationMessage = `Vehicle ${vehicleNo} has a new rental request.`;
+      
+      const notification = new Notification({
+        description: notificationMessage,
+        type: 'Pending',
+        user: vendor._id
+      });
+      
+      const savedNotification = await notification.save();
+      notificationId = savedNotification._id;
+    }
+
     res.status(201).json({
       message: "Rental created successfully.",
-      rental: savedRental
+      rental: savedRental,
+      notification: {
+        id: notificationId,
+        message: `Vehicle ${vehicleNo} has a new rental request.`
+      }
     });
   } catch (err) {
     next(err);
   }
 };
 
+
+// const changeStatus = async (req, res, next) => {
+//   try {
+//     const { id } = req.params; // Rental ID from URL
+//     const { status, rejection_message } = req.body; // New status and optional rejection message
+    
+//     // Allowed statuses
+//     const validStatuses = ["Approved", "In Trip", "Completed", "Rejected"];
+    
+//     // Check if params.id is a valid ObjectId (24 hexadecimal characters)
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       return res.status(400).send({
+//         message: "Invalid ObjectId format. Please provide a valid 24-character hexadecimal ID."
+//       });
+//     }
+    
+//     if (!validStatuses.includes(status)) {
+//       return res.status(400).json({ message: "Invalid status update request." });
+//     }
+    
+//     // Find rental by ID and populate customer and vehicle information
+//     // Also populate the created_by field from the vehicle to get vendor information
+//     const rental = await Rental.findById(id)
+//       .populate('customer')
+//       .populate({
+//         path: 'vehicle',
+//         populate: {
+//           path: 'created_by',
+//           model: 'User'
+//         }
+//       });
+    
+//     if (!rental) {
+//       return res.status(404).json({ message: "Rental not found." });
+//     }
+    
+//     // Prevent changes after "Completed"
+//     if (rental.status === "Completed") {
+//       return res.status(400).json({ message: "Cannot update a completed rental." });
+//     }
+    
+//     // ✅ Status Transition Rules
+//     if (status === "Approved" && rental.status !== "Pending") {
+//       return res.status(400).json({ message: "Only 'Pending' rentals can be approved." });
+//     } else if (status === "Approved") {
+//       rental.approvedAt = new Date();
+//       rental.approved_at = new Date(); // Setting both for consistency with schema
+//     }
+    
+//     if (status === "In Trip" && rental.status !== "Approved") {
+//       return res.status(400).json({ message: "Rental must be 'Approved' before moving to 'In Trip'." });
+//     } else if (status === "In Trip") {
+//       rental.InTrip_at = new Date();
+//     }
+    
+//     if (status === "Completed" && rental.status !== "In Trip") {
+//       return res.status(400).json({ message: "Rental must be 'In Trip' before marking as 'Completed'." });
+//     }
+    
+//     if (status === "Rejected") {
+//       if (rental.status !== "Pending") {
+//         return res.status(400).json({ message: "Only 'Pending' rentals can be rejected." });
+//       }
+//       if (!rejection_message || rejection_message.trim() === "") {
+//         return res.status(400).json({ message: "Rejection message is required when rejecting a rental." });
+//       }
+//       rental.rejection_message = rejection_message; // Store rejection reason
+//       rental.rejected_at = new Date();
+//     }
+    
+//     // Update status
+//     rental.status = status;
+    
+//     // If marking as "Completed", set the actual drop-off time
+//     if (status === "Completed") {
+//       rental.actualDropOffDateTime = new Date();
+//     }
+    
+//     await rental.save({ validateModifiedOnly: true });
+    
+//     // Get vehicle number and vendor information
+//     const vehicleNo = rental.vehicle ? rental.vehicle.registration_number || 'Unknown' : 'Unknown';
+//     const vendor = rental.vehicle && rental.vehicle.created_by ? rental.vehicle.created_by : null;
+    
+//     // Create notification for the vendor with only vehicle number (no rental ID)
+//     let notificationMessage = '';
+    
+//     switch (status) {
+//       case 'Approved':
+//         notificationMessage = `Vehicle ${vehicleNo} has been approved.`;
+//         break;
+//       case 'In Trip':
+//         notificationMessage = `Vehicle ${vehicleNo} has started the trip.`;
+//         break;
+//       case 'Completed':
+//         notificationMessage = `Vehicle ${vehicleNo} has been completed.`;
+//         break;
+//       case 'Rejected':
+//         notificationMessage = `Vehicle ${vehicleNo} has been rejected. Reason: ${rejection_message}`;
+//         break;
+//       default:
+//         notificationMessage = `Vehicle ${vehicleNo} status has been updated to ${status}.`;
+//     }
+    
+//     // Create and save notification if vendor exists
+//     let notificationId = null;
+    
+//     if (vendor) {
+//       const notification = new Notification({
+//         description: notificationMessage,
+//         type: status,
+//         user: vendor._id
+//       });
+      
+//       const savedNotification = await notification.save();
+//       notificationId = savedNotification._id;
+//     }
+    
+//     // Format response with vehicle number included
+//     return res.status(200).json({
+//       message: `Rental status updated to ${status}.`,
+//       rental: {
+//         ...rental.toObject(),
+//         vehicleNo: vehicleNo
+//       },
+//       notification: {
+//         id: notificationId,
+//         message: notificationMessage
+//       }
+//     });
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
 
 const changeStatus = async (req, res, next) => {
@@ -121,10 +372,20 @@ const changeStatus = async (req, res, next) => {
       .populate('customer')
       .populate({
         path: 'vehicle',
-        populate: {
-          path: 'created_by',
-          model: 'User'
-        }
+        populate: [
+          {
+            path: 'created_by',
+            model: 'User'
+          },
+          {
+            path: 'make',
+            model: 'Brand'
+          },
+          {
+            path: 'vehicle_type',
+            model: 'Type'
+          }
+        ]
       });
     
     if (!rental) {
@@ -178,6 +439,151 @@ const changeStatus = async (req, res, next) => {
     // Get vehicle number and vendor information
     const vehicleNo = rental.vehicle ? rental.vehicle.registration_number || 'Unknown' : 'Unknown';
     const vendor = rental.vehicle && rental.vehicle.created_by ? rental.vehicle.created_by : null;
+    
+    // Send email to customer if status is "Approved"
+    if (status === "Approved" && rental.customer && rental.customer.email) {
+      try {
+        // Configure nodemailer transporter
+        const transporter = nodemailer.createTransport({
+            service: 'gmail', // Use Gmail or any other email service
+            port: 465,
+            secure: true,
+            auth: {
+                user: "lamichhanepower@gmail.com",      // Your email address (store in environment variable)
+                pass: "atbo tmsq nwup qbvc",  // Your email password or app password (store in environment variable)
+            },
+        });
+
+        // Format dates
+        const pickupDate = new Date(rental.pickUpDateTime).toLocaleString();
+        const dropoffDate = new Date(rental.dropOffDateTime).toLocaleString();
+
+        // Email content
+        const emailHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
+            .container { max-width: 600px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+            .header { background-color: #28a745; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; margin: -20px -20px 20px -20px; }
+            .success-badge { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 20px; border: 1px solid #c3e6cb; }
+            .details-section { background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; }
+            .detail-row { display: flex; justify-content: space-between; margin: 8px 0; padding: 5px 0; border-bottom: 1px solid #dee2e6; }
+            .detail-label { font-weight: bold; color: #495057; }
+            .detail-value { color: #212529; }
+            .important-info { background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 5px; margin: 15px 0; border: 1px solid #ffeaa7; }
+            .contact-section { background-color: #e7f3ff; padding: 15px; border-radius: 5px; margin: 15px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #6c757d; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🎉 Rental Request Approved!</h1>
+            </div>
+            
+            <div class="success-badge">
+              <strong>Great News!</strong> Your vehicle rental request has been approved and confirmed.
+            </div>
+
+            <div class="details-section">
+              <h3>🚗 Vehicle Details</h3>
+              <div class="detail-row">
+                <span class="detail-label">Vehicle:</span>
+                <span class="detail-value">${rental.vehicle.make?.brandName || 'N/A'} ${rental.vehicle.model}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Registration Number:</span>
+                <span class="detail-value">${rental.vehicle.registration_number}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Color:</span>
+                <span class="detail-value">${rental.vehicle.color}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Fuel Type:</span>
+                <span class="detail-value">${rental.vehicle.fuel_type}</span>
+              </div>
+            </div>
+
+            <div class="details-section">
+              <h3>📅 Rental Details</h3>
+              <div class="detail-row">
+                <span class="detail-label">Pickup Date & Time:</span>
+                <span class="detail-value">${pickupDate}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Drop-off Date & Time:</span>
+                <span class="detail-value">${dropoffDate}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Pickup Location:</span>
+                <span class="detail-value">${rental.pickUpLocation}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Drop-off Location:</span>
+                <span class="detail-value">${rental.dropOffLocation}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Total Price:</span>
+                <span class="detail-value">$${rental.price}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Price Per Day:</span>
+                <span class="detail-value">$${rental.per_day}</span>
+              </div>
+            </div>
+
+            <div class="contact-section">
+              <h3>📞 Vendor Contact Information</h3>
+              <div class="detail-row">
+                <span class="detail-label">Vendor Name:</span>
+                <span class="detail-value">${vendor?.name || 'N/A'}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Phone Number:</span>
+                <span class="detail-value">${vendor?.phoneNumber || 'N/A'}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Email:</span>
+                <span class="detail-value">${vendor?.email || 'N/A'}</span>
+              </div>
+            </div>
+
+            <div class="important-info">
+              <strong>⚠️ Important Reminders:</strong>
+              <ul>
+                <li>Please arrive on time for pickup</li>
+                <li>Bring a valid driving license and ID</li>
+                <li>Contact the vendor if you need to make any changes</li>
+                <li>Inspect the vehicle before taking possession</li>
+              </ul>
+            </div>
+
+            <div class="footer">
+              <p>Thank you for choosing our rental service!</p>
+              <p>If you have any questions, please contact our support team.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+        `;
+
+         // Send a success email to the user
+        transporter.sendMail({
+            from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>', // sender address
+            to: rental.customer.email, // recipient's email
+            subject: `🎉 Vehicle Rental Approved - ${rental.vehicle.make?.brandName || ''} ${rental.vehicle.model} (${rental.vehicle.registration_number})`,
+            html: emailHTML
+        });
+
+        console.log(`Approval email sent to ${rental.customer.email}`);
+      } catch (emailError) {
+        console.error('Error sending approval email:', emailError);
+        // Don't fail the main operation if email fails
+      }
+    }
     
     // Create notification for the vendor with only vehicle number (no rental ID)
     let notificationMessage = '';
@@ -284,6 +690,30 @@ const changeToCancelled = async (req, res, next) => {
       rental.cancelled_at = new Date();
       rental.cancellation_message = cancellation_message; // Save the cancellation message
       await rental.save();
+
+      const cust = rental.customer;
+      const cust1= await User.findById(cust);
+
+      // Configure the email transporter using Nodemailer
+              const transporter = nodemailer.createTransport({
+                  service: 'gmail', // Use Gmail or any other email service
+                  port: 465,
+                  secure: true,
+                  auth: {
+                      user: "lamichhanepower@gmail.com",      // Your email address (store in environment variable)
+                      pass: "atbo tmsq nwup qbvc",  // Your email password or app password (store in environment variable)
+                  },
+              });
+      
+              // Send a success email to the user
+              transporter.sendMail({
+                  from: '"Sanskar Lamichhane 👻" <lamichhanepower@gmail.com>', // sender address
+                  to: cust1.email, // recipient's email
+                  subject: 'Rental Cancellation ❌',
+                  text: `❌ Rental has been cancelled by admin - ${rental.vehicle.make?.brandName || ''} ${rental.vehicle.model} (${rental.vehicle.registration_number})`,
+              });
+
+
       
       // Create notification for the vendor
       const vehicleNo = rental.vehicle ? rental.vehicle.registration_number || 'Unknown' : 'Unknown';
@@ -366,6 +796,7 @@ const changeToCancelled = async (req, res, next) => {
     next(err);
   }
 };
+
 
 
 const getAllRentalDetails = async (req, res, next) => {
